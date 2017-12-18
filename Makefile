@@ -3,10 +3,10 @@ CFLAGS_ = -std=gnu11 -Wall -Wextra
 
 all: main
 
-main: main.c malloc.o
+main: main.c malloc.so
 
-malloc.o: malloc.c malloc.h
-	$(CC) $(CFLAGS) -pthread -c malloc.c -o malloc.o 
+malloc.so: malloc.c malloc.h
+	$(CC) $(CFLAGS) -fPIC -shared -pthread -c malloc.c -o malloc.so 
 
 clean:
-	rm -f main *.o *~ 
+	rm -f main *.o *~ *.so

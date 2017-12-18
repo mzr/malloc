@@ -5,9 +5,7 @@
 
 int main()
 {
-	void* a = mmalloc(1);
-
-	printf("%d\n", (int)a);
+	foo_mdump();
 
 	return 0;
 }
