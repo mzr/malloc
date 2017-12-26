@@ -7,6 +7,7 @@
 #define PAGESIZE (getpagesize())
 #define BT_ALLOCATED 1
 #define BT_FREE 0
+#define ABS(value)  ( (value) >=0 ? (value) : -(value) )
 
 static mem_block_t* find_free_block(size_t size);
 static mem_chunk_t* get_new_chunk(size_t size);
@@ -15,11 +16,12 @@ static size_t _pages_needed(size_t x, size_t r);
 static int set_boundary_tag_of_block(mem_block_t* block, size_t is_allocated);
 static size_t round_up_to_multiply_of(size_t x, size_t r);
 static mem_block_t* get_back_boundary_tag_of_block(mem_block_t* block, size_t* is_allocated);
+static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block);
 
 static int set_boundary_tag_of_block(mem_block_t* block, size_t is_allocated)
 {
     size_t bt_address = (size_t) block->mb_size + (size_t) block->mb_data;
-    *((mem_block_t**) bt_address) = (mem_block_t*)((size_t)block || is_allocated);
+    *((mem_block_t**) bt_address) = (mem_block_t*)(size_t)((size_t)block || is_allocated);
     return 0;
 }
 
@@ -64,12 +66,12 @@ void foo_mdump()
     printf("DYNAMICALLY ALLOCATED MEMORY DUMP:\n");
     LIST_FOREACH(chunk, &chunk_list, ma_node){
         // chunk_nr, address, size as whole size - sizeof(mem_chunk_t)
-        printf("%d\t0x%016x\t%d\n", 
+        printf("%d\t0x%016lx\t%d\n", 
             chunk_nr++, (size_t) chunk, chunk->size);
 
         LIST_FOREACH(block, &chunk->ma_freeblks, mb_node){
             // block_nr, address, size as mb_data size
-            printf("\t%d\t0x%016x\t%d\n", 
+            printf("\t%d\t0x%016lx\t%d\n", 
                 block_nr++, (size_t) block, block->mb_size);
         }
 
@@ -103,7 +105,6 @@ void foo_free(void *ptr)
 static mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
 {
     size_t needed_bytes = sizeof(mem_chunk_t) + min_block_data_bytes + BT_SIZE;
-    printf("%d\n", needed_bytes);
     size_t pages_needed = _pages_needed(needed_bytes, PAGESIZE);
     size_t page_bytes_needed = pages_needed * PAGESIZE;
     mem_chunk_t* new_chunk;
@@ -157,6 +158,7 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
 {
     mem_block_t* found_block = NULL;
     mem_chunk_t* new_chunk = NULL;
+    mem_block_t* right_side_split_block = NULL;
     void* aligned_memory = NULL;
     size_t user_align_bytes;
     size_t total_bytes;
@@ -188,18 +190,41 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
     else
         aligned_memory = (void**)(((size_t)(&found_block->mb_data) + user_align_bytes) & ~(alignment - 1));
 
-    // we have right block in found_block
-    // found_block->mb_size = -found_block->mb_size;
-
     // clear bytes between mb_data and aligned_memory
     memset(&found_block->mb_data, 0, (size_t)aligned_memory - (size_t)(&found_block->mb_data));
 
-    // split blocks
+    found_block->mb_size = -found_block->mb_size;
+    set_boundary_tag_of_block(found_block, BT_ALLOCATED);
 
+    // now block is read but not splitted
 
-
-    // set boundary tag
-    // set_boundary_tag_of_block(found_block, BT_ALLOCATED);
+    // split when needed
+    split_block_to_size(found_block, eight_bytes_data, &right_side_split_block);
 
     return aligned_memory;
+}
+
+static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block)
+{
+    size_t available_space_for_new_block_with_its_header = 
+        ABS(block->mb_size) - ABS(desired_size) - BT_SIZE;
+    
+    // <= OR <. blocks of 0 size? NOPE
+    if(available_space_for_new_block_with_its_header <= sizeof(mem_block_t)){
+        return 0;
+    }
+
+    size_t new_block_size = available_space_for_new_block_with_its_header - sizeof(mem_block_t);
+
+    *new_block = (mem_block_t*)((size_t)block->mb_data + BT_SIZE);
+
+    block->mb_size = -ABS(desired_size);
+    set_boundary_tag_of_block(block, BT_ALLOCATED);
+    (*new_block)->mb_size = new_block_size;
+    set_boundary_tag_of_block(*new_block, BT_FREE);
+
+    // add new block on list
+    LIST_INSERT_AFTER(block, *new_block, mb_node);
+
+    return 1;
 }
