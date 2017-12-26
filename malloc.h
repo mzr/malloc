@@ -6,6 +6,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <errno.h>
+#include <error.h>
 
 #include <stdio.h>              // only for foo_mdump()
 #include "queue.h"
@@ -26,7 +28,7 @@ typedef struct mem_block {
         LIST_ENTRY(mem_block) mb_node;  /* node on free block list, valid if block is free */
         uint64_t mb_data[0];            /* user data pointer, valid if block is allocated */
     };
-} mem_block_t;
+} mem_block_t;                          /* mem_block_t* pointer to itself at the end of block data */
 
 typedef struct mem_chunk {
     LIST_ENTRY(mem_chunk) ma_node;      /* node on list of all chunks */
