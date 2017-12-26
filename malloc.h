@@ -8,6 +8,8 @@
 #include <pthread.h>
 #include <errno.h>
 #include <error.h>
+#include <assert.h>
+#include <string.h>
 
 #include <stdio.h>              // only for foo_mdump()
 #include "queue.h"
@@ -23,7 +25,7 @@ void foo_free(void *ptr);
 void foo_mdump();
 
 typedef struct mem_block {
-    int32_t mb_size;                    /* mb_size > 0 => free, mb_size < 0 => allocated */
+    int32_t mb_size;                    /* mb_size > 0 => free, mb_size < 0 => allocated, w/o BT */
     union {
         LIST_ENTRY(mem_block) mb_node;  /* node on free block list, valid if block is free */
         uint64_t mb_data[0];            /* user data pointer, valid if block is allocated */
