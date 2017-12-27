@@ -118,6 +118,24 @@ static mem_block_t* find_free_block(size_t data_size)
 
 void foo_free(void *ptr)
 {
+    if(ptr == NULL)
+        return;
+    
+    // wrong pointer
+    if((size_t)ptr % sizeof(void*) != 0)
+        return;
+
+    void* iter_ptr = ptr - sizeof(void*);
+    while(*(size_t*)iter_ptr == 0){
+        iter_ptr -= sizeof(void*);
+    }
+
+    // now iter_ptr should point to block.
+    mem_block_t* block = (mem_block_t*)iter_ptr;
+    mem_block_t* left_block = *((mem_block_t**)(((size_t)block - BT_SIZE) & 0xfffffffffffffffe));
+    mem_block_t* right_block = block->mb_data + block->mb_size + BT_SIZE;
+
+    
 
 }
 
