@@ -22,7 +22,6 @@ static int set_boundary_tag_of_block(mem_block_t* block, size_t is_allocated)
 {
     size_t bt_address = (size_t) block->mb_data + (size_t) ABS(block->mb_size);
     *((mem_block_t**) bt_address) = (mem_block_t*)(size_t)((size_t)block | is_allocated);
-    // *((void**) bt_address) = (mem_block_t*)(size_t)((size_t)block | is_allocated);
     return 0;
 }
 

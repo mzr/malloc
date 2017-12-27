@@ -28,7 +28,5 @@ int main()
 	char* ptr2_c = (char*) ptr2;
 	ptr2_c = "abcd";
 
-	// foo_mdump();
-
 	return 0;
 }
