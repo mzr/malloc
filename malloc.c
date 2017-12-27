@@ -57,7 +57,17 @@ void *foo_realloc(void *ptr, size_t size)
 {
 
 }
-
+/*
+ * Memory structures data dump. 
+ * Format:
+ * chunk_no   chunk_address   first_block_address   chunk_size
+ *    block_no   block_address   mb_data_address   block_size   is_allocated
+ *    block_no   block_address   mb_data_address   block_size   is_allocated
+ *    block_no   block_address   mb_data_address   block_size   is_allocated
+ * chunk_no   chunk_address   first_block_address   chunk_size
+ *    block_no   block_address   mb_data_address   block_size   is_allocated
+ *    block_no   block_address   mb_data_address   block_size   is_allocated
+ */
 void foo_mdump()
 {
     int chunk_nr = 0;
@@ -75,18 +85,21 @@ void foo_mdump()
         LIST_FOREACH(block, &chunk->ma_freeblks, mb_node){
             // block_nr, address, size as mb_data size
             bt_points_to = (size_t)get_back_boundary_tag_of_block(block, &is_allocated);
-            printf("\t%d\t0x%016lx\t0x%016lx\t%d\t0x%016lx\t%lu\n", 
+            printf("\t%d\t0x%016lx\t0x%016lx\t%d\t%lu\n", 
                 block_nr++, 
                 (size_t) block, 
                 (size_t) block->mb_data, 
                 block->mb_size, 
-                (size_t)block,
                 is_allocated);
         }
         block_nr = 0;
     }
 }
 
+/*
+ * Finds free block of size at least data_size.
+ * When there is no block available, returns NULL
+ */
 static mem_block_t* find_free_block(size_t data_size)
 {
     mem_block_t* iter_block;
@@ -109,7 +122,9 @@ void foo_free(void *ptr)
 }
 
 /*
- * Allocates new chunk which size is at least sizeof(block_data)
+ * Allocates new chunk which has a single free 
+ * block of size at least min_block_data_bytes.
+ * Returns NULL on fail (mmap error, propably no memory)
  */
 static mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
 {
@@ -135,7 +150,7 @@ static mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
     assert(new_chunk->ma_first.mb_size >= 0);
 
     set_boundary_tag_of_block(&new_chunk->ma_first, 0);
-// foo_mdump();
+
     return new_chunk;
 }
 
