@@ -10,6 +10,7 @@
 #include <error.h>
 #include <assert.h>
 #include <string.h>
+#include <stdint.h>
 
 #include <stdio.h>              // only for foo_mdump()
 #include "queue.h"
