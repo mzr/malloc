@@ -22,22 +22,22 @@ int main()
 	// char* ptr_c = (char*) ptr;
 	// ptr_c = "\xde\xad\xc0\xde\xee";
 
-// foo_mdump();
+foo_mdump();
 
-	// result = foo_posix_memalign(&ptr2, 16, 5);
-	// printf("result : %d\n", result);
-	// printf("returned pointer: %lx\n", (size_t)ptr2);
+	result = foo_posix_memalign(&ptr2, 16, 5);
+	printf("result : %d\n", result);
+	printf("returned pointer: %lx\n", (size_t)ptr2);
 
-	// char* ptr2_c = (char*) ptr2;
-	// ptr2_c = "abcd";
+	char* ptr2_c = (char*) ptr2;
+	ptr2_c = "abcd";
 
 	// --------------------
 	// issue when freeing
 foo_mdump();
 	foo_free(ptr);
 foo_mdump();
-	// foo_free(ptr2);
-// foo_mdump();
+	foo_free(ptr2);
+foo_mdump();
 
 	return 0;
 }

@@ -48,7 +48,9 @@ static size_t round_up_to_multiply_of(size_t x, size_t r)
 
 void *foo_malloc(size_t size)
 {
-
+    void* tmp;
+    int rtn = foo_posix_memalign(&tmp, 8, size);
+    return (rtn == 0 ? tmp : NULL);
 }
 
 void *foo_calloc(size_t count, size_t size)
