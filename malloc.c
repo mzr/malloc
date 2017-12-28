@@ -135,7 +135,40 @@ void foo_free(void *ptr)
     mem_block_t* left_block = *((mem_block_t**)(((size_t)block - BT_SIZE) & 0xfffffffffffffffe));
     mem_block_t* right_block = block->mb_data + block->mb_size + BT_SIZE;
 
-    
+    // free current block
+    block->mb_size = ABS(block->mb_size);
+    set_boundary_tag_of_block(block, BT_FREE);
+
+    /* check whether right or left are 0 size. Then it means that they
+     * are edge blocks in the chunk. Do not coalescence them. 
+     * They are not coalescenceable.
+     */
+
+    /* We need to coalescence free neighbours with size > 0.
+     * When at least one is coalescenceable, we dont need to walk
+     * the list of blocks
+     */
+
+    // first try to coalescence right one
+    // then try to coalescence left one
+    // depending on which were coalescenced update list
+    int is_left_free = left_block->mb_size > 0 ? 1 : 0;
+    int is_right_free = right_block->mb_size > 0 ? 1 : 0;
+
+    if(is_left_free){
+
+    }
+
+    if(is_right_free){
+
+    }
+
+    if(is_left_free || is_right_free){
+        // add block to free list in constant time
+    } else {
+        // add block to list in linear time
+    }
+
 
 }
 
@@ -161,13 +194,25 @@ static mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
     new_chunk->size = page_bytes_needed - sizeof(mem_chunk_t);
     LIST_INSERT_HEAD(&chunk_list, new_chunk, ma_node);
     
-    // init first block
-    LIST_INSERT_HEAD(&new_chunk->ma_freeblks, &new_chunk->ma_first, mb_node);
-    new_chunk->ma_first.mb_size = page_bytes_needed - sizeof(mem_chunk_t) - BT_SIZE;
+    // init first boundary block of 0 size. it is always allocated
+    new_chunk->ma_first.mb_size = 0;
+    set_boundary_tag_of_block(&new_chunk->ma_first, BT_ALLOCATED);
 
-    assert(new_chunk->ma_first.mb_size >= 0);
+    // init first free block
+    mem_block_t* first_free_block = NULL;
+    first_free_block = (mem_block_t*)((size_t)(&new_chunk->ma_first) + sizeof(mem_block_t) + BT_SIZE);
+    first_free_block->mb_size = page_bytes_needed - sizeof(mem_chunk_t) - 2*sizeof(mem_block_t) - 3*BT_SIZE;
+    // LIST_INSERT_HEAD(&new_chunk->ma_freeblks, &new_chunk->ma_first, mb_node);
+    // new_chunk->ma_first.mb_size = page_bytes_needed - sizeof(mem_chunk_t) - BT_SIZE;
+    assert(first_free_block->mb_size > 0);
+    LIST_INSERT_HEAD(&new_chunk->ma_freeblks, first_free_block, mb_node);
+    set_boundary_tag_of_block(first_free_block, BT_FREE);
 
-    set_boundary_tag_of_block(&new_chunk->ma_first, 0);
+    // init last boundary block of 0 size. it is always allocated
+    // potentially union problem?
+    mem_block_t* last_boundary_block = (mem_block_t*)((size_t)(first_free_block->mb_data) + first_free_block->mb_size + BT_SIZE);
+    last_boundary_block->mb_size = 0;
+    set_boundary_tag_of_block(last_boundary_block, BT_ALLOCATED);
 
     return new_chunk;
 }
@@ -176,15 +221,16 @@ int foo_posix_memalign(void **memptr, size_t alignment, size_t data_bytes)
 {
     void* aligned_memory = NULL;
 
-    if(data_bytes == 0){
-       *memptr = NULL; // NULL or passable to free
-        return 0;
-    }
-
     if(alignment % sizeof(void *) != 0
         || !is_power_of_two(alignment / sizeof(void *))
         || alignment == 0)
         return EINVAL;
+    
+    // Disallow blocks of 0 size.
+    if(data_bytes == 0){
+       *memptr = NULL;
+        return 0;
+    }
     
     aligned_memory = _posix_memalign(alignment, data_bytes);
 
