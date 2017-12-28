@@ -140,7 +140,6 @@ printf("bt_address: 0x%016lx, bt_val: 0x%016lx\n", (size_t)(bt_address), (size_t
 printf("left_addr: 0x%016lx, middle_addr: 0x%016lx, right_addr: 0x%016lx\n", (size_t)left_block, (size_t)block, (size_t)right_block);
     // free current block
     block->mb_size = ABS(block->mb_size);
-
     set_boundary_tag_of_block(block, BT_FREE);
 // foo_mdump();
 
@@ -162,20 +161,56 @@ printf("left_addr: 0x%016lx, middle_addr: 0x%016lx, right_addr: 0x%016lx\n", (si
     int is_right_free = right_block->mb_size > 0 ? 1 : 0;
 
     if(is_left_free){
-
+        printf("block on left is free\n");
+        // it is on FREE_LIST
+        left_block->mb_size = left_block->mb_size + block->mb_size + 2 * sizeof(void*);
+        set_boundary_tag_of_block(left_block, BT_FREE);
     }
 
     if(is_right_free){
-
+        printf("block on right is free");
+        // is on FREE_LIST
+        left_block->mb_size = left_block->mb_size + right_block->mb_size + 2 * sizeof(void*);
+        set_boundary_tag_of_block(left_block, BT_FREE);
     }
 
+    // when at least left free, no need to update list
     if(is_left_free || is_right_free){
-        // add block to free list in constant time
+        if(!is_left_free){
+            LIST_INSERT_BEFORE(right_block, block, mb_node);
+        }
+        if(is_right_free){
+            LIST_REMOVE(right_block, mb_node);
+        }
+        // what if both free? -> unmap
+        // even when one of them is free still we want to unmap because of 
+        // boundary blocks
     } else {
-        // add block to list in linear time
+        // find good place in list for block
+        // need to know chunk
+        mem_chunk_t* chunk_iter;
+        LIST_FOREACH(chunk_iter, &chunk_list, ma_node){
+            if(chunk_iter <= block && block < chunk_iter + sizeof(mem_chunk_t) + chunk_iter->size ){
+                break;
+            }
+        }
+        mem_block_t* block_iter = NULL;
+        LIST_FOREACH(block_iter, &chunk_iter->ma_freeblks, mb_node){
+            if(block_iter > block){
+                break;
+            }
+        }
+
+        if(block_iter != NULL){
+            LIST_INSERT_BEFORE(block_iter, block, mb_node);
+        } else {
+            // need to unmap
+            LIST_REMOVE(chunk_iter, ma_node);
+            munmap(chunk_iter, chunk_iter->size + sizeof(mem_chunk_t));
+        }
     }
 
-
+    return;    
 }
 
 /*

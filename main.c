@@ -22,7 +22,7 @@ int main()
 	// char* ptr_c = (char*) ptr;
 	// ptr_c = "\xde\xad\xc0\xde\xee";
 
-	// foo_mdump();
+// foo_mdump();
 
 	result = foo_posix_memalign(&ptr2, 16, 5);
 	printf("result : %d\n", result);
@@ -32,7 +32,8 @@ int main()
 	ptr2_c = "abcd";
 
 	// --------------------
-	foo_free(ptr);
+	// foo_free(ptr);
+// foo_mdump();
 
 	return 0;
 }
