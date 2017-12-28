@@ -17,6 +17,9 @@ static int set_boundary_tag_of_block(mem_block_t* block, size_t is_allocated);
 static size_t round_up_to_multiply_of(size_t x, size_t r);
 static mem_block_t* get_back_boundary_tag_of_block(mem_block_t* block, size_t* is_allocated);
 static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block);
+static void coalescence_blocks(mem_block_t* left, mem_block_t* right);
+static mem_block_t* get_left_block_addr(mem_block_t* block);
+static mem_block_t* get_right_block_addr(mem_block_t* block);
 
 static int set_boundary_tag_of_block(mem_block_t* block, size_t is_allocated)
 {
@@ -123,21 +126,21 @@ void foo_free(void *ptr)
     if((size_t)ptr % sizeof(void*) != 0)
         return;
     void* iter_ptr = ptr;
-    printf("iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
+    // printf("iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
     iter_ptr = (void*)((size_t)ptr - sizeof(void*));
-    printf("iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
+    // printf("iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
     while(*(int32_t*)iter_ptr == 0){
-        printf("loop. iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
+        // printf("loop. iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
         iter_ptr = (void*)((size_t)iter_ptr - sizeof(void*));
     }
-printf("iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
+// printf("iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
     // now iter_ptr should point to block.
     mem_block_t* block = (mem_block_t*)iter_ptr;
     mem_block_t** bt_address = (mem_block_t**)((size_t)block - BT_SIZE);
-printf("bt_address: 0x%016lx, bt_val: 0x%016lx\n", (size_t)(bt_address), (size_t)*bt_address);
+// printf("bt_address: 0x%016lx, bt_val: 0x%016lx\n", (size_t)(bt_address), (size_t)*bt_address);
     mem_block_t* left_block = (mem_block_t*)(((size_t)(*bt_address)) & 0xfffffffffffffffe);
     mem_block_t* right_block = (mem_block_t*)((size_t)block->mb_data + ABS(block->mb_size) + BT_SIZE);
-printf("left_addr: 0x%016lx, middle_addr: 0x%016lx, right_addr: 0x%016lx\n", (size_t)left_block, (size_t)block, (size_t)right_block);
+// printf("left_addr: 0x%016lx, middle_addr: 0x%016lx, right_addr: 0x%016lx\n", (size_t)left_block, (size_t)block, (size_t)right_block);
     // free current block
     block->mb_size = ABS(block->mb_size);
     set_boundary_tag_of_block(block, BT_FREE);
@@ -157,43 +160,52 @@ printf("left_addr: 0x%016lx, middle_addr: 0x%016lx, right_addr: 0x%016lx\n", (si
     // first try to coalescence right one
     // then try to coalescence left one
     // depending on which were coalescenced update list
-    int is_left_free = left_block->mb_size > 0 ? 1 : 0;
-    int is_right_free = right_block->mb_size > 0 ? 1 : 0;
+    int left_block_size = left_block->mb_size;
+    int right_block_size = right_block->mb_size;
+printf("left_block_size: %d, right_block_size: %d\n", left_block_size, right_block_size);
 
-    if(is_left_free){
-        printf("block on left is free\n");
-        // it is on FREE_LIST
-        left_block->mb_size = left_block->mb_size + block->mb_size + 2 * sizeof(void*);
-        set_boundary_tag_of_block(left_block, BT_FREE);
+    if(left_block_size > 0){
+        // LEFT IS ON FREE LIST
+        // recursive?
+        coalescence_blocks(left_block, block);
+        block = left_block;
     }
 
-    if(is_right_free){
-        printf("block on right is free");
-        // is on FREE_LIST
-        left_block->mb_size = left_block->mb_size + right_block->mb_size + 2 * sizeof(void*);
-        set_boundary_tag_of_block(left_block, BT_FREE);
+    if(right_block_size > 0){
+        // RIGHT IS ON FREE_LIST
+        // recursive?
+        coalescence_blocks(block, right_block);
+    }
+
+    // check for unmap
+    left_block = get_left_block_addr(block);
+    right_block = get_right_block_addr(block);
+    // update left and right sizes
+    if(left_block->mb_size == 0 && right_block->mb_size == 0){
+        mem_chunk_t* chunk = (mem_chunk_t*)((size_t)left_block - 4 * sizeof(void*));
+        LIST_REMOVE(chunk, ma_node);
+        munmap(chunk, chunk->size + sizeof(mem_chunk_t));
+        return;
     }
 
     // when at least left free, no need to update list
-    if(is_left_free || is_right_free){
-        if(!is_left_free){
+    if(left_block_size > 0 || right_block_size > 0){
+        if(left_block_size < 0){
             LIST_INSERT_BEFORE(right_block, block, mb_node);
         }
-        if(is_right_free){
+        if(right_block_size > 0){
             LIST_REMOVE(right_block, mb_node);
         }
-        // what if both free? -> unmap
-        // even when one of them is free still we want to unmap because of 
-        // boundary blocks
     } else {
         // find good place in list for block
         // need to know chunk
-        mem_chunk_t* chunk_iter;
+        mem_chunk_t* chunk_iter = NULL;
         LIST_FOREACH(chunk_iter, &chunk_list, ma_node){
-            if(chunk_iter <= block && block < chunk_iter + sizeof(mem_chunk_t) + chunk_iter->size ){
+            if((size_t)chunk_iter <= (size_t)block && (size_t)block < (size_t)chunk_iter + sizeof(mem_chunk_t) + chunk_iter->size ){
                 break;
             }
         }
+        assert(chunk_iter != NULL);
         mem_block_t* block_iter = NULL;
         LIST_FOREACH(block_iter, &chunk_iter->ma_freeblks, mb_node){
             if(block_iter > block){
@@ -204,10 +216,8 @@ printf("left_addr: 0x%016lx, middle_addr: 0x%016lx, right_addr: 0x%016lx\n", (si
         if(block_iter != NULL){
             LIST_INSERT_BEFORE(block_iter, block, mb_node);
         } else {
-            // need to unmap
-            LIST_REMOVE(chunk_iter, ma_node);
-            munmap(chunk_iter, chunk_iter->size + sizeof(mem_chunk_t));
-        }
+            LIST_INSERT_HEAD(&chunk_iter->ma_freeblks, block_iter, mb_node);
+        } 
     }
 
     return;    
@@ -361,4 +371,21 @@ static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_bloc
     LIST_INSERT_AFTER(block, *new_block, mb_node);
 
     return 1;
+}
+
+static void coalescence_blocks(mem_block_t* left, mem_block_t* right)
+{
+    left->mb_size = left->mb_size + right->mb_size + 2 * sizeof(void*);
+    set_boundary_tag_of_block(left, BT_FREE);
+}
+
+static mem_block_t* get_left_block_addr(mem_block_t* block)
+{
+    mem_block_t** bt_address = (mem_block_t**)((size_t)block - BT_SIZE);
+    return (mem_block_t*)(((size_t)(*bt_address)) & 0xfffffffffffffffe);
+}
+
+static mem_block_t* get_right_block_addr(mem_block_t* block)
+{
+    return (mem_block_t*)((size_t)block->mb_data + ABS(block->mb_size) + BT_SIZE);
 }
