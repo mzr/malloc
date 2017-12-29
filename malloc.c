@@ -21,6 +21,11 @@ static void coalescence_blocks(mem_block_t* left, mem_block_t* right);
 static mem_block_t* get_left_block_addr(mem_block_t* block);
 static mem_block_t* get_right_block_addr(mem_block_t* block);
 
+void *foo_realloc(void *ptr, size_t size)
+{
+
+}
+
 static int set_boundary_tag_of_block(mem_block_t* block, size_t is_allocated)
 {
     size_t bt_address = (size_t) block->mb_data + (size_t) ABS(block->mb_size);
@@ -49,19 +54,27 @@ static size_t round_up_to_multiply_of(size_t x, size_t r)
 void *foo_malloc(size_t size)
 {
     void* tmp;
-    int rtn = foo_posix_memalign(&tmp, 8, size);
+    int rtn = foo_posix_memalign(&tmp, sizeof(void*), size);
     return (rtn == 0 ? tmp : NULL);
 }
 
 void *foo_calloc(size_t count, size_t size)
 {
+    if(count <= 0 || size <= 0)
+        return NULL;
 
+    size_t demanded_bytes = count * size;
+    void* ptr; 
+    int rtn = foo_posix_memalign(&ptr, sizeof(void*), demanded_bytes);
+
+    if(rtn == EINVAL || rtn == ENOMEM || ptr == NULL)
+        return NULL;
+    
+    memset(ptr, 0, demanded_bytes);
+
+    return ptr;
 }
 
-void *foo_realloc(void *ptr, size_t size)
-{
-
-}
 /*
  * Memory structures data dump. 
  * Format:
@@ -281,7 +294,7 @@ int foo_posix_memalign(void **memptr, size_t alignment, size_t data_bytes)
         return EINVAL;
     
     // Disallow blocks of 0 size.
-    if(data_bytes == 0){
+    if(data_bytes <= 0){
        *memptr = NULL;
         return 0;
     }
