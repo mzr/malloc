@@ -22,26 +22,27 @@ static void coalescence_blocks(mem_block_t* left, mem_block_t* right);
 static mem_block_t* get_left_block_addr(mem_block_t* block);
 static mem_block_t* get_right_block_addr(mem_block_t* block);
 static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data);
+static void *_foo_realloc(void *aligned_data, size_t size);
 
-void *foo_realloc(void *aligned_data, size_t size)
+void* foo_realloc(void* ptr, size_t size)
 {
     if(size == 0){
-        foo_free(aligned_data);
+        foo_free(ptr);
         return NULL;
     }
 
-    if(aligned_data == NULL){
+    if(ptr == NULL)
         return foo_malloc(size);
-    }
 
-    // jesli przenosimy blok to free na ptr i zwracamy nowy
-    // if it fails return unmdified ptr
+    return _foo_realloc(ptr, size);
+}
 
+static void* _foo_realloc(void* aligned_data, size_t size)
+{
     mem_block_t* block = get_block_address_from_aligned_data_pointer(aligned_data);
 
-    // czy na pewno ??
-    // uzytkownik mysli ze ma mb_data+size - aligned_data, a nawet mniej.
-    // od aligned_mb_data do BT - zawsze podzielne przez 8 
+    // user thinks that he has mb_data+size - aligned_data, maybe even less.
+    // from aligned_data to BT => divisible by 8
     size_t at_most_user_used_bytes = (size_t)block->mb_data + ABS(block->mb_size) - (size_t)aligned_data;
     int64_t difference = (int64_t)size - (int64_t)at_most_user_used_bytes;
 
@@ -108,14 +109,22 @@ void *foo_realloc(void *aligned_data, size_t size)
         assert(desired_data_size > at_most_user_used_bytes);
         // check whether right block is free
         // if it is free, check its size if it is enough for
-        // our purposes. it may be guarranted to not to have two adjacent
-        // free blocks. but its under implementation now
+        // our purposes. it is guarranted not to have two adjacent free blocks
+        // resize it
+        mem_block_t* right_block = get_right_block_addr(block);
+        if(right_block->mb_size > 0){
+            size_t right_size_left = right_block->mb_size - ABS(difference);
 
-        // if we cannot expand out block to desired size without changing address
-        // we can try to abbandon our aligned_mb_data pointer and check
-        // if switching to mb_data covers our ass.
-        // if not, we have to abbandon completelly this block, allocate new one,
-        // copy data, and deallocate primary block
+            if(right_size_left >= 16){
+                // shrink right_block
+            }
+            if(right_size_left <= -16) {
+                // merge blocks
+            }
+
+            // move data to new block
+        }
+
     }
 
     return NULL; // dumy pointer. CHANGE IT!
