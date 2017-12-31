@@ -288,7 +288,7 @@ void test(){
         // foo_mdump();
         check_integrity();
         #endif
-        __z++;
+        __z++;  // for gdb conditional breakpoint / watchpoint
         printf("------------------------------ END OF TEST ------------------------------\n");
     }
  
@@ -299,7 +299,7 @@ void test(){
  
 int main(){
 
-    srand(0); // 0 22
+    srand(6);
  
     test();
 }

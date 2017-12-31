@@ -301,6 +301,7 @@ struct {								\
 	if (((elm2)->field.le_next = (elm)->field.le_next) != NULL)	\
 		(elm2)->field.le_next->field.le_prev =			\
 		    &(elm2)->field.le_next;				\
+	QUEUEDEBUG_LIST_POSTREMOVE((elm), field)			\
 } while(0)
 
 /*
