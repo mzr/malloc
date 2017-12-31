@@ -17,6 +17,9 @@
 
 #define ARCH_BIT sizeof(size_t)
 
+void check_integrity();
+
+
 void *foo_malloc(size_t size);
 void *foo_calloc(size_t count, size_t size);
 void *foo_realloc(void *ptr, size_t size);

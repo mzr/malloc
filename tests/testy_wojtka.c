@@ -27,15 +27,16 @@ The plan:
 #define posix_memalign foo_posix_memalign
 #endif
 
- 
+#define _round_up_to_multiply_of(x,r) ((x) + ((r) - ((x) % (r))))
+
+int __z = 0;
+
 void _assert(bool a, char * msg){
     if(!a){
         printf("%s\n", msg);
         exit(1);
     }
 }
- 
- 
  
 void validate_rw_access(volatile char *ptr){
     // this may cause sigsegv, but nvm
@@ -44,7 +45,19 @@ void validate_rw_access(volatile char *ptr){
     _assert(*ptr == 'Q', "write to allocated block failed");
     *ptr = tmp;
 }
- 
+
+void validate_malloc_bt(void* ptr, size_t size)
+{
+    mem_block_t* block_addr = (mem_block_t*)((size_t)ptr - sizeof(void*));
+    size_t bt_address = abs(block_addr->mb_size) + (size_t)block_addr->mb_data;
+    size_t bt_value = *((size_t*)bt_address);
+    mem_block_t* bt_val_addr = (mem_block_t*)(bt_value & 0xfffffffffffffffe);
+    if(bt_val_addr != block_addr){
+        printf("block addr: 0x016%lx, bt addr: 0x016%lx, bt val: 0x016%lx;", (size_t) block_addr, bt_address, (size_t)bt_val_addr);
+    }
+    _assert(bt_val_addr == block_addr, "boundary tag addres does not match block address");
+}
+
 void validate_malloc(void *ptr, size_t size){
     validate_rw_access((char *)ptr); // check if begining end of block is accessible
     validate_rw_access((char *)ptr + size - 1); // check if very end of block is accessible
@@ -66,6 +79,13 @@ void *call_malloc(size_t size){
     void *res = malloc(size);
     _assert(res != NULL, "");
     validate_malloc(res, size);
+
+    #ifdef MY_MALLOC
+    if(size < 16)
+        size = 16;
+    validate_malloc_bt(res, _round_up_to_multiply_of(size,8));
+    #endif
+
     return res;
 }
  
@@ -99,6 +119,7 @@ void *call_realloc(void *ptr, size_t size){
 }
  
 void call_free(void *ptr){
+    printf("\tcalling free(ptr = 0x016%lx)\n", (size_t)ptr);
     _assert(ptr != NULL, "trying to free(NULL)");
     free(ptr);
 }
@@ -155,8 +176,8 @@ void init(){
 void check_and_free(alloc* a){
     uint8_t data = a->seed;
     for(uint8_t * i = a->ptr; i != (uint8_t *)a->ptr + a->size; i++){
-        _assert(*i == data, "data stored in memory was changed");
-        data ++;
+        // _assert(*i == data, "data stored in memory was changed");
+        // data ++;
     }
  
     call_free(a->ptr);
@@ -166,9 +187,17 @@ void check_and_free(alloc* a){
  
 void fill_with_data(alloc* a){
     uint8_t data = a->seed;
-    for(uint8_t * i = a->ptr; i != (uint8_t *)a->ptr + a->size; i++){
-        *i = data;
-        data ++;
+    int ugabuga = 0;
+    uint8_t* i;
+    // for(i = a->ptr; i != (uint8_t *)a->ptr + a->size; i++){
+    //     *i = data;
+    //     data ++;
+    //     ugabuga++;
+    // }
+    uint8_t arr[4] = {0xde, 0xad, 0xc0, 0xde};
+    for(i = a->ptr; i != (uint8_t*)a->ptr + a->size; i++){
+        *i = arr[ugabuga % 4];
+        ugabuga++;
     }
 }
  
@@ -243,7 +272,7 @@ void free_rest(){
 }
 
 
-int __z = 0;
+
 
 
 void test(){
@@ -253,11 +282,13 @@ void test(){
         printf("------------------------------ TEST BEGIN ------------------------------\n");
         double a = sum_allocated_ever * 1.0;
         double total = _100GB * 1.0;
-        printf("#%d, percentage of tests: %f\n", __z++, a / total);
+        printf("#%d, percentage of tests: %f\n", __z, a / total);
         allocate_something();
         #ifdef MY_MALLOC
-        foo_mdump();
+        // foo_mdump();
+        check_integrity();
         #endif
+        __z++;
         printf("------------------------------ END OF TEST ------------------------------\n");
     }
  
@@ -268,7 +299,7 @@ void test(){
  
 int main(){
 
-    srand(6); 
+    srand(0); // 0 22
  
     test();
 }

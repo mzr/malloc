@@ -34,6 +34,18 @@ static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_da
 static void *_foo_realloc(void *aligned_data, size_t size);
 static int shrink_block(mem_block_t* block, size_t shrink_bytes);
 static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointer, size_t new_size, void* aligned_data);
+void check_integrity();
+
+mem_chunk_t* get_chunk_address(mem_block_t* iter_block)
+{
+    if(iter_block->mb_size == 0)
+        goto there;
+    do{
+        iter_block = get_left_block_addr(iter_block);
+    }while(iter_block->mb_size != 0);
+there:
+    return (mem_chunk_t*)((size_t)iter_block - 4*sizeof(void*));
+}
 
 static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointer, size_t new_size, void* aligned_data)
 {
@@ -54,15 +66,15 @@ static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data
             // LIST_INSERT_AFTER(block, new_right_block, mb_node); // spierdolone
             LIST_REPLACE(right_block, new_right_block, mb_node);    // moze nie spierdolone, raczej nie spierdolone
 
-            block->mb_size = block->mb_size + expand_bytes;
+            block->mb_size = -(ABS(block->mb_size) + expand_bytes); // jeśli block jest zajety to trzeba odjac!!!
             set_boundary_tag_of_block(block, BT_ALLOCATED);
 
             goto shrinked_right_block_exit;
         } else{
             // check whether data fits in merged blocks
-            if(block->mb_size + expand_bytes <= block->mb_size + right_block->mb_size + 2 * sizeof(void*)){
+            if(ABS(block->mb_size) + expand_bytes <= ABS(block->mb_size) + ABS(right_block->mb_size) + 2 * sizeof(void*)){ // did ABS THERE
                 LIST_REMOVE(right_block, mb_node);
-                block->mb_size = block->mb_size + right_block->mb_size + 2 * sizeof(void*);
+                block->mb_size = -(ABS(block->mb_size) + ABS(right_block->mb_size) + 2 * sizeof(void*));    // did ABS and minus
                 set_boundary_tag_of_block(block, BT_ALLOCATED);
 
                 goto merged_right_block_exit;
@@ -75,7 +87,11 @@ static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data
         move_data:
         *new_data_pointer = foo_malloc(new_size);
         if(*new_data_pointer != NULL){
-            memcpy(*new_data_pointer, aligned_data, new_size);
+            // kopiuje wiecej danych spod aligned data niz ma tamten blok, a nawet wychodze za chunk
+            // bo jak realloc zwieksza to kopiujemy te dane ktorych uzywalismy do tej poryyyy.
+            mem_block_t* block_addr = get_block_address_from_aligned_data_pointer(aligned_data);
+            size_t bytes_to_copy = ABS(block_addr->mb_size) - ((size_t)aligned_data - (size_t)block->mb_data);
+            memcpy(*new_data_pointer, aligned_data, bytes_to_copy);          // SIGBUS
             foo_free(aligned_data);
             goto moved_data_exit;
         } else {
@@ -93,6 +109,7 @@ static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data
 
 static int shrink_block(mem_block_t* block, size_t shrink_bytes)
 {
+    // block may be allocated
     assert(shrink_bytes % 8 == 0);
     mem_block_t* right_block;
 
@@ -107,7 +124,7 @@ static int shrink_block(mem_block_t* block, size_t shrink_bytes)
 
     // left-expand right_block by shrink_bytes
     if(right_block->mb_size > 0){
-        block->mb_size -= shrink_bytes;
+        block->mb_size =  -(ABS(block->mb_size) - shrink_bytes);
         set_boundary_tag_of_block(block, BT_ALLOCATED);
 
         mem_block_t* new_right_block = (mem_block_t*)((size_t)right_block - shrink_bytes);
@@ -124,14 +141,29 @@ static int shrink_block(mem_block_t* block, size_t shrink_bytes)
         //right_block is allocated
         // check if we can put a new free block between right_block and block
         if(shrink_bytes >= sizeof(mem_block_t) + BT_SIZE){
-            block->mb_size -= shrink_bytes;
+            block->mb_size = -(ABS(block->mb_size) - shrink_bytes);                     // block is allocated, right? did minus and ABS here
             set_boundary_tag_of_block(block, BT_ALLOCATED);
 
             void* bt_address = get_back_boundary_tag_address(block);
             mem_block_t* new_block = (mem_block_t*)((size_t)bt_address + sizeof(void*));
             new_block->mb_size = shrink_bytes - 2 * sizeof(void*); // - (sizeof(BT) + sizeof(block.size)
             set_boundary_tag_of_block(new_block, BT_FREE);
-            LIST_INSERT_AFTER(block, new_block, mb_node);
+            // LIST_INSERT_AFTER(block, new_block, mb_node);   // NOPE bo block nie jest na liscie
+
+            // mem_block_t* block_before_block = get_left_block_addr(block);
+            mem_chunk_t* _chunk_addr = get_chunk_address(block);
+            mem_block_t* _block_iter = NULL;
+            LIST_FOREACH(_block_iter, &_chunk_addr->ma_freeblks, mb_node){
+                if(_block_iter > new_block){
+                    break;
+                }
+            }
+
+            if(_block_iter != NULL){
+                LIST_INSERT_BEFORE(_block_iter, new_block, mb_node);
+            } else {
+                LIST_INSERT_HEAD(&_chunk_addr->ma_freeblks, new_block, mb_node); // WTF block_iter == NULL
+            } 
 
             goto fitted_new_block_exit;
 
@@ -165,8 +197,7 @@ static void* _foo_realloc(void* aligned_data, size_t size)
 
     // shrinking block
     if(block_new_size < ABS(block->mb_size)){
-        // printf("shrinking block\n");
-        shrink_block(block, block->mb_size - block_new_size);
+        shrink_block(block, ABS(block->mb_size) - block_new_size);   // SPIERDOLONE BO SIE PRZEKRECA
         return aligned_data;
     }
 
@@ -209,7 +240,7 @@ static int set_boundary_tag_of_block(mem_block_t* block, size_t is_allocated)
 
 static void* get_back_boundary_tag_address(mem_block_t* block)
 {
-    return (void*)((size_t)block->mb_data + (size_t)block->mb_size);
+    return (void*)((size_t)block->mb_data + (size_t)ABS(block->mb_size)); // WTF ABS on size makes things go wrong
 }
 
 static mem_block_t* get_back_boundary_tag_of_block(mem_block_t* block, size_t* is_allocated)
@@ -283,7 +314,7 @@ void foo_mdump()
         LIST_FOREACH(block, &chunk->ma_freeblks, mb_node){
             // LIST BT_POINTS_TO
             bt_points_to = (size_t)get_back_boundary_tag_of_block(block, &is_allocated);
-            
+
             printf("\t%d\t0x%016lx\t0x%016lx\t%d\t%lu\t0x%016lx\t0x%016lx\n", 
                 block_nr++, 
                 (size_t) block, 
@@ -292,6 +323,8 @@ void foo_mdump()
                 is_allocated,
                 (size_t)get_back_boundary_tag_address(block),
                 bt_points_to);
+            assert(block->mb_size > 0);
+            assert((size_t)block == bt_points_to);
         }
         block_nr = 0;
     }
@@ -327,27 +360,24 @@ void foo_free(void *ptr)
     // wrong pointer
     if((size_t)ptr % sizeof(void*) != 0)
         return;
+/*
     void* iter_ptr = ptr;
-    // printf("iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
     iter_ptr = (void*)((size_t)ptr - sizeof(void*));
-    // printf("iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
     while(*(int32_t*)iter_ptr == 0){
-        // printf("loop. iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
         iter_ptr = (void*)((size_t)iter_ptr - sizeof(void*));
     }
-// printf("iter_ptr: 0x%016lx, iter_ptr_val: %d\n", (size_t)iter_ptr, *((int32_t*)iter_ptr));
-    // now iter_ptr should point to block
     mem_block_t* block = (mem_block_t*)iter_ptr;
-    mem_block_t** bt_address = (mem_block_t**)((size_t)block - BT_SIZE);
-// printf("bt_address: 0x%016lx, bt_val: 0x%016lx\n", (size_t)(bt_address), (size_t)*bt_address);
-    mem_block_t* left_block = (mem_block_t*)(((size_t)(*bt_address)) & 0xfffffffffffffffe);
-    mem_block_t* right_block = (mem_block_t*)((size_t)block->mb_data + ABS(block->mb_size) + BT_SIZE);
-// printf("left_addr: 0x%016lx, middle_addr: 0x%016lx, right_addr: 0x%016lx\n", (size_t)left_block, (size_t)block, (size_t)right_block);
+*/
+    mem_block_t* block = get_block_address_from_aligned_data_pointer(ptr);
+    // mem_block_t** bt_address = (mem_block_t**)((size_t)block - BT_SIZE);
+    // mem_block_t* left_block = (mem_block_t*)(((size_t)(*bt_address)) & 0xfffffffffffffffe);
+    // mem_block_t* right_block = (mem_block_t*)((size_t)block->mb_data + ABS(block->mb_size) + BT_SIZE);
+    mem_block_t* left_block = get_left_block_addr(block);
+    mem_block_t* right_block = get_right_block_addr(block);
+
     // free current block
     block->mb_size = ABS(block->mb_size);
     set_boundary_tag_of_block(block, BT_FREE);
-// foo_mdump();
-
 
     /* check whether right or left are 0 size. Then it means that they
      * are edge blocks in the chunk. Do not coalescence them. 
@@ -362,13 +392,12 @@ void foo_free(void *ptr)
     // first try to coalescence right one
     // then try to coalescence left one
     // depending on which were coalescenced update list
-    int left_block_size = left_block->mb_size;
-    int right_block_size = right_block->mb_size;
-// printf("left_block_size: %d, right_block_size: %d\n", left_block_size, right_block_size);
+    int32_t left_block_size = left_block->mb_size;
+    int32_t right_block_size = right_block->mb_size;
+
 
     if(left_block_size > 0){
         // LEFT IS ON FREE LIST
-        // recursive?
         coalescence_blocks(left_block, block);
         block = left_block;
     }
@@ -376,14 +405,17 @@ void foo_free(void *ptr)
     if(right_block_size > 0){
         // RIGHT IS ON FREE_LIST
         // recursive?
+        // printf("block_addr: 0x%016lx, block_size: %d\n", (size_t)right_block, right_block->mb_size);
         coalescence_blocks(block, right_block);
     }
-
+    mem_block_t* old_right = right_block;   // ugly fix
     // check for unmap
     left_block = get_left_block_addr(block);
     right_block = get_right_block_addr(block);
+    // printf("block_addr: 0x%016lx, block_size: %d\n", (size_t)right_block, right_block->mb_size);
     // update left and right sizes
     if(left_block->mb_size == 0 && right_block->mb_size == 0){
+
         mem_chunk_t* chunk = (mem_chunk_t*)((size_t)left_block - 4 * sizeof(void*));
         LIST_REMOVE(chunk, ma_node);
         munmap(chunk, chunk->size + sizeof(mem_chunk_t));
@@ -393,10 +425,15 @@ void foo_free(void *ptr)
     // when at least left free, no need to update list
     if(left_block_size > 0 || right_block_size > 0){
         if(left_block_size < 0){
-            LIST_INSERT_BEFORE(right_block, block, mb_node);
+            // right one was free
+            // printf("dupa");
+            // LIST_INSERT_BEFORE(right_block, block, mb_node); // spierdolone
+            LIST_INSERT_BEFORE(old_right,block,mb_node);
         }
         if(right_block_size > 0){
-            LIST_REMOVE(right_block, mb_node);
+            // printf("dupa: %d\n", right_block->mb_size);
+            // LIST_REMOVE(right_block, mb_node);  // spierdolone
+            LIST_REMOVE(old_right, mb_node);
         }
     } else {
         // find good place in list for block
@@ -418,11 +455,12 @@ void foo_free(void *ptr)
         if(block_iter != NULL){
             LIST_INSERT_BEFORE(block_iter, block, mb_node);
         } else {
-            LIST_INSERT_HEAD(&chunk_iter->ma_freeblks, block_iter, mb_node);
+            LIST_INSERT_HEAD(&chunk_iter->ma_freeblks, block, mb_node); // WTF block_iter == NULL
         } 
     }
 
     return;    
+
 }
 
 /*
@@ -519,6 +557,7 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
     // printf("need to allocate block of size: %lu bytes\n", eight_bytes_data);
     found_block = find_free_block(eight_bytes_data);
     
+        
     /* Need to allocate new chunk */
     if(found_block == NULL){
         new_chunk = get_new_chunk(eight_bytes_data);
@@ -535,6 +574,7 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
     else
         aligned_memory = (void**)(((size_t)(&found_block->mb_data) + user_align_bytes) & ~(alignment - 1));
 // printf("found_block addr: 0x%016lx\n", (size_t)found_block);
+    assert(found_block->mb_size > 0);
     found_block->mb_size = -found_block->mb_size;
     set_boundary_tag_of_block(found_block, BT_ALLOCATED);
 
@@ -548,7 +588,8 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
     // clear bytes between mb_data and aligned_memory
     // BE CAREFULL OF int argument of memset (4 bytes)
     // might want to set it to some magic number
-    memset(&found_block->mb_data, 0, (size_t)aligned_memory - (size_t)(&found_block->mb_data));
+    // memset(found_block->mb_data, 0, (size_t)aligned_memory - (size_t)(found_block->mb_data)); // deleted & before found_bock->mb_data
+    bzero(found_block->mb_data, (size_t)aligned_memory - (size_t)(found_block->mb_data));
 
     return aligned_memory;
 }
@@ -615,3 +656,51 @@ static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_da
     }
     return (mem_block_t*)aligned_data;
 }
+
+
+
+
+
+void walk_the_chunk(mem_chunk_t* chunk)
+{
+    size_t is_allocated;
+    mem_block_t* iter = &chunk->ma_first;
+    int block_number = 0;
+
+    assert(iter->mb_size == 0);
+    assert((size_t)iter == (size_t)get_back_boundary_tag_of_block(iter, NULL));
+    assert((size_t)iter->mb_data + ABS(iter->mb_size) == (size_t)get_back_boundary_tag_address(iter));
+
+    iter = get_right_block_addr(iter);
+    block_number++;
+    do{
+        assert(iter->mb_size != 0);
+        assert(ABS(iter->mb_size) % 8 == 0);
+        assert(ABS(iter->mb_size) >= 16);
+        assert((size_t)iter == (size_t)get_back_boundary_tag_of_block(iter, NULL));
+        assert((size_t)iter->mb_data + ABS(iter->mb_size) == (size_t)get_back_boundary_tag_address(iter));
+
+        // sprawdzaj obecnosc na liscie lub nie
+
+        iter = get_right_block_addr(iter);
+        block_number++;
+    } while(iter->mb_size != 0);
+
+    assert(iter->mb_size == 0);
+    assert((size_t)iter == (size_t)get_back_boundary_tag_of_block(iter, NULL));
+    assert((size_t)iter->mb_data + ABS(iter->mb_size) == (size_t)get_back_boundary_tag_address(iter));
+
+    assert((size_t)iter + sizeof(void*) == (size_t)chunk + (size_t)chunk->size + sizeof(mem_chunk_t) - sizeof(void*));
+}
+
+void check_integrity(){
+    mem_chunk_t* chunk;
+    mem_block_t* block;
+    int i = 0;
+    LIST_FOREACH(chunk, &chunk_list, ma_node){
+        walk_the_chunk(chunk);
+        i++;
+    }
+    printf("GOT %d CHUNKS\n",i);
+}
+
