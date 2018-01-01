@@ -10,7 +10,6 @@
 #define ABS(value)  ( (value) >=0 ? (value) : -(value) )
 
 #define _round_up_to_multiply_of(x,r) ((x) + ((r) - ((x) % (r))))
-#define _pages_needed(x,r) ((x) / (r) + ((x) % (r) ? 1 : 0))
 
 #define DID_NOTHING 0
 #define FITTED_NEW_BLOCK 1
@@ -36,7 +35,7 @@ static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_da
 
 static void set_block_size_and_bt(mem_block_t* block, int32_t size);
 
-// static size_t _pages_needed(size_t x, size_t r);
+static size_t _pages_needed(size_t x, size_t r);
 
 static void* _posix_memalign(size_t alignment, size_t size);
 static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block);
@@ -317,10 +316,10 @@ void* foo_realloc(void* ptr, size_t size)
     return _foo_realloc(ptr, size);
 }
 
-// static size_t _pages_needed(size_t x, size_t r)
-// {
-//     return x / r + (x % r ? 1 : 0);
-// }
+static size_t _pages_needed(size_t x, size_t r)
+{
+    return x / r + (x % r ? 1 : 0);
+}
 
 void *foo_malloc(size_t size)
 {
@@ -645,9 +644,8 @@ void walk_the_chunk(mem_chunk_t* chunk)
     iter = get_right_block_addr(iter);
     block_number++;
     do{
-        assert(iter->mb_size != 0);
+        assert(ABS(iter->mb_size) >= MIN_BLOCK_SIZE);
         assert(ABS(iter->mb_size) % 8 == 0);
-        assert(ABS(iter->mb_size) >= 16);
         assert((size_t)iter == (size_t)get_back_boundary_tag_of_block(iter));
         assert((size_t)iter->mb_data + ABS(iter->mb_size) == (size_t)get_back_boundary_tag_address(iter));
 
