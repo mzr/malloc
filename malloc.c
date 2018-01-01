@@ -9,6 +9,8 @@
 #define BT_FREE 0
 #define ABS(value)  ( (value) >=0 ? (value) : -(value) )
 
+#define _round_up_to_multiply_of(x,r) ((x) + ((r) - ((x) % (r))))
+
 #define DID_NOTHING 0
 #define FITTED_NEW_BLOCK 1
 #define EXPANDED_RIGHT_BLOCK 2
@@ -17,6 +19,8 @@
 #define MERGED_RIGHT_BLOCK 1
 #define MOVED_DATA 2
 #define ECANTEXPAND 3
+
+#define MIN_BLOCK_SIZE (2*sizeof(void*))
 
 static mem_block_t* find_free_block(size_t size);
 static mem_chunk_t* get_new_chunk(size_t size);
@@ -29,7 +33,8 @@ static mem_block_t* get_left_block_addr(mem_block_t* block);
 static mem_block_t* get_right_block_addr(mem_block_t* block);
 static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data);
 
-static size_t round_up_to_multiply_of(size_t x, size_t r);
+static void set_block_size_and_bt(mem_block_t* block, int32_t size);
+
 static size_t _pages_needed(size_t x, size_t r);
 
 static void* _posix_memalign(size_t alignment, size_t size);
@@ -39,6 +44,12 @@ static void *_foo_realloc(void *aligned_data, size_t size);
 static int shrink_block(mem_block_t* block, size_t shrink_bytes);
 static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointer, size_t new_size, void* aligned_data);
 void check_integrity();
+
+static void set_block_size_and_bt(mem_block_t* block, int32_t size)
+{
+    block->mb_size = size;
+    set_boundary_tag_of_block(block);
+}
 
 /*
  * Finds free block of size at least data_size.
@@ -75,6 +86,7 @@ static mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
     size_t page_bytes_needed = pages_needed * PAGESIZE;
     mem_chunk_t* new_chunk;
     mem_block_t* middle_block;
+    mem_block_t* right_boundary_block;
 
     new_chunk = (mem_chunk_t*) mmap(NULL, page_bytes_needed, 
         PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -87,20 +99,17 @@ static mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
     LIST_INSERT_HEAD(&chunk_list, new_chunk, ma_node);
     
     // Init left boundary block of size 0. It is always allocated.
-    new_chunk->ma_first.mb_size = 0;
-    set_boundary_tag_of_block(&new_chunk->ma_first);
+    set_block_size_and_bt(&new_chunk->ma_first, 0);
 
     // Init middle free block.
     middle_block = (mem_block_t*)((size_t)(new_chunk->ma_first.mb_data)  + BT_SIZE);
-    middle_block->mb_size = page_bytes_needed - sizeof(mem_chunk_t) - 3 * sizeof(void*);
-    assert(middle_block->mb_size > 0 && middle_block->mb_size % 8 == 0);
-    set_boundary_tag_of_block(middle_block);
+    set_block_size_and_bt(middle_block, page_bytes_needed - sizeof(mem_chunk_t) - 3 * sizeof(void*));
     LIST_INSERT_HEAD(&new_chunk->ma_freeblks, middle_block, mb_node);
+    assert(middle_block->mb_size >= MIN_BLOCK_SIZE && middle_block->mb_size % 8 == 0);
 
     // Init right boundary block of size 0. It is always allocated.
-    mem_block_t* right_boundary_block = (mem_block_t*)((size_t)get_back_boundary_tag_address(middle_block) + BT_SIZE);
-    right_boundary_block->mb_size = 0;
-    set_boundary_tag_of_block(right_boundary_block);
+    right_boundary_block = (mem_block_t*)((size_t)get_back_boundary_tag_address(middle_block) + BT_SIZE);
+    set_block_size_and_bt(right_boundary_block, 0);
 
     return new_chunk;
 }
@@ -267,7 +276,7 @@ static void* _foo_realloc(void* aligned_data, size_t size)
     // we have to assume that user uses everything from aligned_data to BT.
     // he may have used much less than that but we really dont know.
     // all we know is, that user now wants to use size bytes from aligned_data.
-    size_t block_new_size = round_up_to_multiply_of((size_t)aligned_data - (size_t)block->mb_data + size, sizeof(void*));
+    size_t block_new_size = _round_up_to_multiply_of((size_t)aligned_data - (size_t)block->mb_data + size, sizeof(void*));
     assert(block_new_size != 0);
 
     if(block_new_size == ABS(block->mb_size))
@@ -310,11 +319,6 @@ void* foo_realloc(void* ptr, size_t size)
 static size_t _pages_needed(size_t x, size_t r)
 {
     return x / r + (x % r ? 1 : 0);
-}
-
-static size_t round_up_to_multiply_of(size_t x, size_t r)
-{
-    return x + (r - (x % r));
 }
 
 void *foo_malloc(size_t size)
@@ -516,7 +520,7 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
     total_bytes = demanded_bytes + user_align_bytes;
     /* round to align boundary tag, which at nearest, aligned to sizeof(void*) 
      * address, after aligned data */
-    eight_bytes_data = round_up_to_multiply_of(total_bytes, sizeof(void*));
+    eight_bytes_data = _round_up_to_multiply_of(total_bytes, sizeof(void*));
 
     // UGLY TEMPORARY SOLUTION
     eight_bytes_data = eight_bytes_data < 2*sizeof(void*) ? 2*sizeof(void*) : eight_bytes_data;        
