@@ -1,15 +1,11 @@
 #include "malloc.h"
 
-#define is_power_of_two(x)     ((((x) - 1) & (x)) == 0)
 #define MB_DATA_ALIGNMENT 8
 #define WORD (sizeof(void*))
 #define BT_SIZE (sizeof(void*))
 #define PAGESIZE (getpagesize())
 #define BT_ALLOCATED 1
 #define BT_FREE 0
-#define ABS(value)  ( (value) >=0 ? (value) : -(value) )
-
-#define _round_up_to_multiply_of(x,r) ((x) + ((r) - ((x) % (r))))
 
 #define DID_NOTHING 0
 #define FITTED_NEW_BLOCK 1
@@ -21,6 +17,11 @@
 #define ECANTEXPAND 3
 
 #define MIN_BLOCK_SIZE (2*sizeof(void*))
+
+#define is_power_of_two(x)     ((((x) - 1) & (x)) == 0)
+#define ABS(value)  ( ((value) >= 0) ? (value) : (-(value)) )
+#define _round_up_to_multiply_of(x,r) ((x) + ((r) - ((x) % (r))))
+#define _pages_needed(x,r) (((x) / (r)) + (((x) % (r)) ? 1 : 0))
 
 static mem_block_t* find_free_block(size_t size);
 static mem_chunk_t* get_new_chunk(size_t size);
@@ -34,8 +35,6 @@ static mem_block_t* get_right_block_addr(mem_block_t* block);
 static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data);
 
 static void set_block_size_and_bt(mem_block_t* block, int32_t size);
-
-static size_t _pages_needed(size_t x, size_t r);
 
 static void* _posix_memalign(size_t alignment, size_t size);
 static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block);
@@ -57,7 +56,7 @@ static void set_block_size_and_bt(mem_block_t* block, int32_t size)
  */
 static mem_block_t* find_free_block(size_t size)
 {
-    assert(size > 0);
+    assert(size >= MIN_BLOCK_SIZE );
     assert(size % 8 == 0);
     mem_block_t* iter_block;
     mem_chunk_t* iter_chunk;
@@ -67,7 +66,7 @@ static mem_block_t* find_free_block(size_t size)
             if(iter_block->mb_size >= size){
                 return iter_block;
             }
-            assert(iter_block->mb_size > 0);
+            assert(iter_block->mb_size >= MIN_BLOCK_SIZE);
         }
     }
 
@@ -82,8 +81,8 @@ static mem_block_t* find_free_block(size_t size)
 static mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
 {
     size_t needed_bytes = sizeof(mem_chunk_t) + min_block_data_bytes + 4 * sizeof(void*);
-    size_t pages_needed = _pages_needed(needed_bytes, PAGESIZE);
-    size_t page_bytes_needed = pages_needed * PAGESIZE;
+    // size_t pages_needed = _pages_needed(needed_bytes, PAGESIZE);
+    size_t page_bytes_needed = _pages_needed(needed_bytes, PAGESIZE) * PAGESIZE;
     mem_chunk_t* new_chunk;
     mem_block_t* middle_block;
     mem_block_t* right_boundary_block;
@@ -159,8 +158,6 @@ static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data
             new_right_block->mb_size = right_block->mb_size - expand_bytes; 
             set_boundary_tag_of_block(new_right_block);
 
-
-
             block->mb_size = -(ABS(block->mb_size) + expand_bytes);
             set_boundary_tag_of_block(block);
 
@@ -206,12 +203,13 @@ static int shrink_block(mem_block_t* block, size_t shrink_bytes)
     assert(shrink_bytes % 8 == 0);
     mem_block_t* right_block;
 
-    if(shrink_bytes < sizeof(void*)){
-        // no need to do anything, because bt_address - aligned_data must
-        // be a multiply of sizeof(void*)
-        assert(1 == 0); // should not happen
-        goto did_nothing_exit;
-    }
+    assert(shrink_bytes >= sizeof(void*));
+    // if(shrink_bytes < sizeof(void*)){
+    //     // no need to do anything, because bt_address - aligned_data must
+    //     // be a multiply of sizeof(void*)
+    //     assert(1 == 0); // should not happen
+    //     goto did_nothing_exit;
+    // }
 
     right_block = get_right_block_addr(block);
 
@@ -316,11 +314,6 @@ void* foo_realloc(void* ptr, size_t size)
     return _foo_realloc(ptr, size);
 }
 
-static size_t _pages_needed(size_t x, size_t r)
-{
-    return x / r + (x % r ? 1 : 0);
-}
-
 void *foo_malloc(size_t size)
 {
     void* tmp;
@@ -345,17 +338,6 @@ void *foo_calloc(size_t count, size_t size)
     return ptr;
 }
 
-/*
- * Memory structures data dump. 
- * Format:
- * chunk_no   chunk_address   first_block_address   chunk_size
- *    block_no   block_address   mb_data_address   block_size   is_allocated
- *    block_no   block_address   mb_data_address   block_size   is_allocated
- *    block_no   block_address   mb_data_address   block_size   is_allocated
- * chunk_no   chunk_address   first_block_address   chunk_size
- *    block_no   block_address   mb_data_address   block_size   is_allocated
- *    block_no   block_address   mb_data_address   block_size   is_allocated
- */
 void foo_mdump()
 {
     int chunk_nr = 0;
@@ -584,7 +566,6 @@ static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_bloc
     // update block
     block->mb_size = -ABS(desired_size);
     set_boundary_tag_of_block(block);
-
 
     // set new blocks data
     (*new_block)->mb_size = new_block_size;
