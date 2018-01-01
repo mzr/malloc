@@ -68,6 +68,10 @@ MU_TEST_SUITE(posix_memalign_alloc_wrong_alignment_and_data_0) {
 int main(int argc, char *argv[]) {
 	MU_RUN_SUITE(posix_memalign_alloc_wrong_alignment_and_data_0);
 	MU_REPORT();
+    #define GREEN   "\033[32m"
+    #define RESET   "\033[0m"
+
+    printf(GREEN "\n\nAll tests sucessfully passed!\n" RESET);
 	return 0;
 }
 

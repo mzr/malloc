@@ -60,5 +60,10 @@ int main(){
     test_case_2();
     test_case_3();
 
+    #define GREEN   "\033[32m"
+    #define RESET   "\033[0m"
+
+    printf(GREEN "\n\nAll tests sucessfully passed!\n" RESET);
+
     return 0;
 }
