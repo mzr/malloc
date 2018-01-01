@@ -18,8 +18,11 @@ tests: tests/tests.c malloc.o malloc.h
 test-cases: tests/test_cases.c malloc.o malloc.h
 	$(CC) $(CFLAGS) -g -fno-omit-frame-pointer tests/test_cases.c malloc.o -o ./tests/test-cases
 
-testy-wojtka: tests/testy_wojtka.c malloc.o malloc.h
-	$(CC) $(CFLAGS) -g -fno-omit-frame-pointer tests/testy_wojtka.c malloc.o -o ./tests/testy-wojtka
+testy-wojtka: tests/testy_wojtka.c malloc.o integrity-check.o malloc.h
+	$(CC) $(CFLAGS) -g -fno-omit-frame-pointer tests/testy_wojtka.c malloc.o integrity-check.o -o ./tests/testy-wojtka
+
+integrity-check.o: malloc_integrity_check.c 
+	$(CC) $(CFLAGS) -g -c malloc_integrity_check.c -o integrity-check.o
 
 main: main.c malloc.o
 	$(CC) $(CFLAGS) -g -fno-omit-frame-pointer main.c malloc.o -o main

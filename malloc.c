@@ -1,9 +1,5 @@
 #include "malloc.h"
 
-#define MB_DATA_ALIGNMENT 8
-#define BT_SIZE (sizeof(void*))
-#define PAGESIZE (getpagesize())
-
 #define DID_NOTHING 0
 #define FITTED_NEW_BLOCK 1
 #define EXPANDED_RIGHT_BLOCK 2
@@ -13,32 +9,30 @@
 #define MOVED_DATA 2
 #define ECANTEXPAND 3
 
-#define MIN_BLOCK_SIZE (2*sizeof(void*))
-
 #define is_power_of_two(x)     ((((x) - 1) & (x)) == 0)
 #define ABS(value)  ( ((value) >= 0) ? (value) : (-(value)) )
 #define _round_up_to_multiply_of(x,r) ((x) + ((r) - ((x) % (r))))
 #define _pages_needed(x,r) (((x) / (r)) + (((x) % (r)) ? 1 : 0))
 
-static mem_block_t* find_free_block(size_t size);
-static mem_chunk_t* get_new_chunk(size_t size);
+mem_block_t* find_free_block(size_t size);
+mem_chunk_t* get_new_chunk(size_t size);
 
-static mem_block_t** get_back_boundary_tag_address(mem_block_t* block);
-static void set_boundary_tag_of_block(mem_block_t* block);
-static mem_block_t* get_back_boundary_tag_of_block(mem_block_t* block);
+mem_block_t** get_back_boundary_tag_address(mem_block_t* block);
+void set_boundary_tag_of_block(mem_block_t* block);
+mem_block_t* get_back_boundary_tag_of_block(mem_block_t* block);
 
-static mem_block_t* get_left_block_addr(mem_block_t* block);
-static mem_block_t* get_right_block_addr(mem_block_t* block);
-static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data);
+mem_block_t* get_left_block_addr(mem_block_t* block);
+mem_block_t* get_right_block_addr(mem_block_t* block);
+mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data);
 
-static void set_block_size_and_bt(mem_block_t* block, int32_t size);
+void set_block_size_and_bt(mem_block_t* block, int32_t size);
 
-static void coalescence_blocks(mem_block_t* left, mem_block_t* right);
-static mem_chunk_t* get_chunk_address(mem_block_t* iter_block);
-static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block);
+void coalescence_blocks(mem_block_t* left, mem_block_t* right);
+mem_chunk_t* get_chunk_address(mem_block_t* iter_block);
+int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block);
 
-static int shrink_block(mem_block_t* block, size_t shrink_bytes);
-static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointer, size_t new_size, void* aligned_data);
+int shrink_block(mem_block_t* block, size_t shrink_bytes);
+int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointer, size_t new_size, void* aligned_data);
 
 
 
@@ -55,7 +49,7 @@ static void *_foo_realloc(void *aligned_data, size_t size);
  * Finds free block of size at least data_size.
  * When there is no block available, returns NULL
  */
-static mem_block_t* find_free_block(size_t size)
+mem_block_t* find_free_block(size_t size)
 {
     assert(size >= MIN_BLOCK_SIZE );
     assert(size % 8 == 0);
@@ -79,7 +73,7 @@ static mem_block_t* find_free_block(size_t size)
  * block of size at least min_block_data_bytes.
  * Returns NULL on fail (mmap error, propably no memory)
  */
-static mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
+mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
 {
     size_t needed_bytes = sizeof(mem_chunk_t) + min_block_data_bytes + 4 * sizeof(void*);
     size_t page_bytes_needed = _pages_needed(needed_bytes, PAGESIZE) * PAGESIZE;
@@ -393,7 +387,7 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
 // BLOCK & CHUNK UTILITY FUNCTIONS //
 /////////////////////////////////////
 
-static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block)
+int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block)
 {
     assert(desired_size % 8 == 0);
 
@@ -430,22 +424,22 @@ static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_bloc
     return 1;
 }
 
-static void coalescence_blocks(mem_block_t* left, mem_block_t* right)
+void coalescence_blocks(mem_block_t* left, mem_block_t* right)
 {
     set_block_size_and_bt(left, left->mb_size + right->mb_size + 2 * sizeof(void*));
 }
 
-static mem_block_t* get_left_block_addr(mem_block_t* block)
+mem_block_t* get_left_block_addr(mem_block_t* block)
 {
     return *((mem_block_t**)((size_t)block - BT_SIZE));
 }
 
-static mem_block_t* get_right_block_addr(mem_block_t* block)
+mem_block_t* get_right_block_addr(mem_block_t* block)
 {
     return (mem_block_t*)((size_t)get_back_boundary_tag_address(block) + BT_SIZE);
 }
 
-static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data)
+mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data)
 {
     // Bytes between mb_data and aligned_mb_data are 0.
     // Last (and first) non zero field in allocated block of mb_block_t structure
@@ -458,24 +452,24 @@ static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_da
     return (mem_block_t*)aligned_data;
 }
 
-static mem_block_t** get_back_boundary_tag_address(mem_block_t* block)
+mem_block_t** get_back_boundary_tag_address(mem_block_t* block)
 {
     return (mem_block_t**)((size_t)block->mb_data + (size_t)ABS(block->mb_size));
 }
 
-static void set_boundary_tag_of_block(mem_block_t* block)
+void set_boundary_tag_of_block(mem_block_t* block)
 {
     mem_block_t** bt_address = get_back_boundary_tag_address(block);
     *bt_address = block;
 }
 
-static void set_block_size_and_bt(mem_block_t* block, int32_t size)
+void set_block_size_and_bt(mem_block_t* block, int32_t size)
 {
     block->mb_size = size;
     set_boundary_tag_of_block(block);
 }
 
-static mem_block_t* get_back_boundary_tag_of_block(mem_block_t* block)
+mem_block_t* get_back_boundary_tag_of_block(mem_block_t* block)
 {
     return *get_back_boundary_tag_address(block);
 }
@@ -491,7 +485,7 @@ there:
     return (mem_chunk_t*)((size_t)iter_block - 4*sizeof(void*));
 }
 
-static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointer, size_t new_size, void* aligned_data)
+int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointer, size_t new_size, void* aligned_data)
 {
     mem_block_t* right_block = get_right_block_addr(block);
     
@@ -548,7 +542,7 @@ static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data
     error_exit:                     return ECANTEXPAND;
 }
 
-static int shrink_block(mem_block_t* block, size_t shrink_bytes)
+int shrink_block(mem_block_t* block, size_t shrink_bytes)
 {
     // block may be allocated
     assert(shrink_bytes % 8 == 0);
@@ -614,48 +608,4 @@ static int shrink_block(mem_block_t* block, size_t shrink_bytes)
     did_nothing_exit:            return DID_NOTHING;
     fitted_new_block_exit:       return FITTED_NEW_BLOCK;
     expanded_right_block_exit:   return EXPANDED_RIGHT_BLOCK;
-}
-
-//////////////////////////////////
-// INTEGRITY CHECKING FUNCTIONS //
-//////////////////////////////////
-
-void walk_the_chunk(mem_chunk_t* chunk)
-{
-    size_t is_allocated;
-    mem_block_t* iter = &chunk->ma_first;
-    int block_number = 0;
-
-    assert(iter->mb_size == 0);
-    assert((size_t)iter == (size_t)get_back_boundary_tag_of_block(iter));
-    assert((size_t)iter->mb_data + ABS(iter->mb_size) == (size_t)get_back_boundary_tag_address(iter));
-
-    iter = get_right_block_addr(iter);
-    block_number++;
-    do{
-        assert(ABS(iter->mb_size) >= MIN_BLOCK_SIZE);
-        assert(ABS(iter->mb_size) % 8 == 0);
-        assert((size_t)iter == (size_t)get_back_boundary_tag_of_block(iter));
-        assert((size_t)iter->mb_data + ABS(iter->mb_size) == (size_t)get_back_boundary_tag_address(iter));
-
-        iter = get_right_block_addr(iter);
-        block_number++;
-    } while(iter->mb_size != 0);
-
-    assert(iter->mb_size == 0);
-    assert((size_t)iter == (size_t)get_back_boundary_tag_of_block(iter));
-    assert((size_t)iter->mb_data + ABS(iter->mb_size) == (size_t)get_back_boundary_tag_address(iter));
-
-    assert((size_t)iter + sizeof(void*) == (size_t)chunk + (size_t)chunk->size + sizeof(mem_chunk_t) - sizeof(void*));
-}
-
-void check_integrity(){
-    mem_chunk_t* chunk;
-    mem_block_t* block;
-    int i = 0;
-    LIST_FOREACH(chunk, &chunk_list, ma_node){
-        walk_the_chunk(chunk);
-        i++;
-    }
-    // printf("GOT %d CHUNKS\n",i);
 }

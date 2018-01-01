@@ -16,6 +16,11 @@
 #include "queue.h"
 #include "malloc_types.h"   /* struct definitions for malloc implementation */
 
+#define MIN_BLOCK_SIZE (2*sizeof(void*))
+#define MB_DATA_ALIGNMENT 8 // default alignment due to be a field in a struct
+#define BT_SIZE (sizeof(void*))
+#define PAGESIZE (getpagesize())
+
 void check_integrity();
 
 void *foo_malloc(size_t size);
