@@ -12,7 +12,6 @@ The plan:
 - write some random, deterministic data to each allocated block
 - before destruction, check data
 - sometimes use realloc
- 
 */
  
 #include "../malloc.h"
@@ -123,31 +122,22 @@ void call_free(void *ptr){
     _assert(ptr != NULL, "trying to free(NULL)");
     free(ptr);
 }
- 
- 
+  
 //////////////////////////////////////////////
- 
- 
- 
- 
+
 typedef struct {
     void * ptr;
     uint64_t size;
     uint8_t seed;
  
 } alloc;
- 
- 
+
 #define _1GB 1073741824ull
 #define _100GB (10 * _1GB)
 #define ALLOC_MAX _1GB
 #define ALLOC_MIN 1
 #define ALLOC_AVG 250000 //((ALLOC_MAX + ALLOC_MIN) / 2)
 #define ALLOCS_MAX_NUM (_1GB / ALLOC_AVG)
- 
- 
- 
- 
  
 uint64_t good_rand(){
     return    (((uint64_t) rand() <<  0) & 0x000000000000FFFFull) |
@@ -162,8 +152,7 @@ size_t rand_alloc_size(){
     r = abs(r);
     return r+1;
 }
- 
- 
+
 __thread alloc allocs[ALLOCS_MAX_NUM];
 __thread uint64_t sum_allocated_ever = 0;
  
@@ -313,9 +302,13 @@ void test(){
     printf(GREEN "\n\nAll %d tests sucessfully passed!\n" RESET, __z);
 }
  
-int main(){
+int main(int argc, char** argv){
 
-    srand(100); // 98 fails
+    if(argc == 1){
+        srand(103);
+    } else {
+        srand(atoi(argv[1]));
+    }
  
     test();
 }

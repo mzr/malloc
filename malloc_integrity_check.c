@@ -1,9 +1,7 @@
-#include "malloc_types.h"
 #include <stdlib.h>
-#include "queue.h"
 #include <assert.h>
+#include "malloc_integrity_check.h"
 
-#define MIN_BLOCK_SIZE (2*sizeof(void*))
 #define ABS(value)  ( ((value) >= 0) ? (value) : (-(value)) )
 
 extern LIST_HEAD(, mem_chunk) chunk_list;

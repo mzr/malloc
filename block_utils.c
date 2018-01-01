@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include "queue.h"
 
-static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block)
+int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block)
 {
     assert(desired_size % 8 == 0);
 
@@ -40,22 +40,22 @@ static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_bloc
     return 1;
 }
 
-static void coalescence_blocks(mem_block_t* left, mem_block_t* right)
+void coalescence_blocks(mem_block_t* left, mem_block_t* right)
 {
     set_block_size_and_bt(left, left->mb_size + right->mb_size + 2 * sizeof(void*));
 }
 
-static mem_block_t* get_left_block_addr(mem_block_t* block)
+mem_block_t* get_left_block_addr(mem_block_t* block)
 {
     return *((mem_block_t**)((size_t)block - BT_SIZE));
 }
 
-static mem_block_t* get_right_block_addr(mem_block_t* block)
+mem_block_t* get_right_block_addr(mem_block_t* block)
 {
     return (mem_block_t*)((size_t)get_back_boundary_tag_address(block) + BT_SIZE);
 }
 
-static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data)
+mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data)
 {
     // Bytes between mb_data and aligned_mb_data are 0.
     // Last (and first) non zero field in allocated block of mb_block_t structure
@@ -68,24 +68,24 @@ static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_da
     return (mem_block_t*)aligned_data;
 }
 
-static mem_block_t** get_back_boundary_tag_address(mem_block_t* block)
+mem_block_t** get_back_boundary_tag_address(mem_block_t* block)
 {
     return (mem_block_t**)((size_t)block->mb_data + (size_t)ABS(block->mb_size));
 }
 
-static void set_boundary_tag_of_block(mem_block_t* block)
+void set_boundary_tag_of_block(mem_block_t* block)
 {
     mem_block_t** bt_address = get_back_boundary_tag_address(block);
     *bt_address = block;
 }
 
-static void set_block_size_and_bt(mem_block_t* block, int32_t size)
+void set_block_size_and_bt(mem_block_t* block, int32_t size)
 {
     block->mb_size = size;
     set_boundary_tag_of_block(block);
 }
 
-static mem_block_t* get_back_boundary_tag_of_block(mem_block_t* block)
+mem_block_t* get_back_boundary_tag_of_block(mem_block_t* block)
 {
     return *get_back_boundary_tag_address(block);
 }
@@ -101,7 +101,7 @@ there:
     return (mem_chunk_t*)((size_t)iter_block - 4*sizeof(void*));
 }
 
-static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointer, size_t new_size, void* aligned_data)
+int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointer, size_t new_size, void* aligned_data)
 {
     mem_block_t* right_block = get_right_block_addr(block);
     
@@ -158,7 +158,7 @@ static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data
     error_exit:                     return ECANTEXPAND;
 }
 
-static int shrink_block(mem_block_t* block, size_t shrink_bytes)
+int shrink_block(mem_block_t* block, size_t shrink_bytes)
 {
     // block may be allocated
     assert(shrink_bytes % 8 == 0);

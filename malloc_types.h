@@ -4,6 +4,11 @@
 #include "queue.h"
 #include <stdint.h>
 
+#define MIN_BLOCK_SIZE (2*sizeof(void*))
+#define MB_DATA_ALIGNMENT 8 // default alignment due to be a field in a struct
+#define BT_SIZE (sizeof(void*))
+#define PAGESIZE (getpagesize())
+
 typedef struct mem_block {
     int32_t mb_size;                    /* mb_size > 0 => free, mb_size < 0 => allocated, w/o BT */
     union {

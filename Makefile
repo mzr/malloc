@@ -6,8 +6,8 @@ all: main
 run-tests: tests
 	./tests/tests
 
-run-wojtek: testy-wojtka
-	./tests/testy-wojtka
+run-test-functional: test-functional
+	./tests/functional-test
 
 run-cases: test-cases
 	./tests/test-cases
@@ -18,10 +18,10 @@ tests: tests/tests.c malloc.o malloc.h
 test-cases: tests/test_cases.c malloc.o malloc.h
 	$(CC) $(CFLAGS) -g -fno-omit-frame-pointer tests/test_cases.c malloc.o -o ./tests/test-cases
 
-testy-wojtka: tests/testy_wojtka.c malloc.o integrity-check.o malloc.h
-	$(CC) $(CFLAGS) -g -fno-omit-frame-pointer tests/testy_wojtka.c malloc.o integrity-check.o -o ./tests/testy-wojtka
+test-functional: tests/functional_test.c malloc.o integrity-check.o malloc.h
+	$(CC) $(CFLAGS) -g -fno-omit-frame-pointer tests/functional_test.c malloc.o integrity-check.o -o ./tests/functional-test
 
-integrity-check.o: malloc_integrity_check.c 
+integrity-check.o: malloc_integrity_check.c  malloc_integrity_check.h
 	$(CC) $(CFLAGS) -g -c malloc_integrity_check.c -o integrity-check.o
 
 main: main.c malloc.o
@@ -31,4 +31,4 @@ malloc.o: malloc.c malloc.h
 	$(CC) $(CFLAGS) -g -fno-omit-frame-pointer -c malloc.c -o malloc.o 
 
 clean:
-	rm -f main *.o *~ *.so ./tests/tests ./tests/testy-wojtka ./tests/test-cases
+	rm -f main *.o *~ *.so ./tests/tests ./tests/functional-test ./tests/test-cases
