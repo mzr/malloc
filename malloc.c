@@ -204,12 +204,11 @@ static int shrink_block(mem_block_t* block, size_t shrink_bytes)
     mem_block_t* right_block;
 
     assert(shrink_bytes >= sizeof(void*));
-    // if(shrink_bytes < sizeof(void*)){
-    //     // no need to do anything, because bt_address - aligned_data must
-    //     // be a multiply of sizeof(void*)
-    //     assert(1 == 0); // should not happen
-    //     goto did_nothing_exit;
-    // }
+
+    // from where did it get called ??
+    if(ABS(block->mb_size) - shrink_bytes < MIN_BLOCK_SIZE){
+        shrink_bytes -= MIN_BLOCK_SIZE - (ABS(block->mb_size) - shrink_bytes);
+    }
 
     right_block = get_right_block_addr(block);
 
@@ -282,6 +281,7 @@ static void* _foo_realloc(void* aligned_data, size_t size)
 
     // shrinking block
     if(block_new_size < ABS(block->mb_size)){
+        // cant shrink it bellow MIN_BLOCK_SIZE
         shrink_block(block, ABS(block->mb_size) - block_new_size);
         return aligned_data;
     }
@@ -651,4 +651,3 @@ void check_integrity(){
     }
     // printf("GOT %d CHUNKS\n",i);
 }
-
