@@ -21,23 +21,20 @@
 static mem_block_t* find_free_block(size_t size);
 static mem_chunk_t* get_new_chunk(size_t size);
 
-// static void* get_back_boundary_tag_address(mem_block_t* block);
 static mem_block_t** get_back_boundary_tag_address(mem_block_t* block);
-
-// static int set_boundary_tag_of_block(mem_block_t* block, size_t is_allocated);
 static void set_boundary_tag_of_block(mem_block_t* block);
-
-// static mem_block_t* get_back_boundary_tag_of_block(mem_block_t* block, size_t* is_allocated);
 static mem_block_t* get_back_boundary_tag_of_block(mem_block_t* block);
 
-static void* _posix_memalign(size_t alignment, size_t size);
-static size_t _pages_needed(size_t x, size_t r);
-static size_t round_up_to_multiply_of(size_t x, size_t r);
-static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block);
-static void coalescence_blocks(mem_block_t* left, mem_block_t* right);
 static mem_block_t* get_left_block_addr(mem_block_t* block);
 static mem_block_t* get_right_block_addr(mem_block_t* block);
 static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data);
+
+static size_t round_up_to_multiply_of(size_t x, size_t r);
+static size_t _pages_needed(size_t x, size_t r);
+
+static void* _posix_memalign(size_t alignment, size_t size);
+static int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** new_block);
+static void coalescence_blocks(mem_block_t* left, mem_block_t* right);
 static void *_foo_realloc(void *aligned_data, size_t size);
 static int shrink_block(mem_block_t* block, size_t shrink_bytes);
 static int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointer, size_t new_size, void* aligned_data);
@@ -646,13 +643,15 @@ static void coalescence_blocks(mem_block_t* left, mem_block_t* right)
 
 static mem_block_t* get_left_block_addr(mem_block_t* block)
 {
-    mem_block_t** bt_address = (mem_block_t**)((size_t)block - BT_SIZE);
-    return (mem_block_t*)(((size_t)(*bt_address)) & 0xfffffffffffffffe);
+    // mem_block_t** bt_address = (mem_block_t**)((size_t)block - BT_SIZE);
+    // return (mem_block_t*)(((size_t)(*bt_address)) & 0xfffffffffffffffe);
+    return *((mem_block_t**)((size_t)block - BT_SIZE));
 }
 
 static mem_block_t* get_right_block_addr(mem_block_t* block)
 {
-    return (mem_block_t*)((size_t)block->mb_data + ABS(block->mb_size) + BT_SIZE);
+    // return (mem_block_t*)((size_t)block->mb_data + ABS(block->mb_size) + BT_SIZE);
+    return (mem_block_t*)((size_t)get_back_boundary_tag_address(block) + BT_SIZE);
 }
 
 static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data)
@@ -666,10 +665,6 @@ static mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_da
     }
     return (mem_block_t*)aligned_data;
 }
-
-
-
-
 
 void walk_the_chunk(mem_chunk_t* chunk)
 {
