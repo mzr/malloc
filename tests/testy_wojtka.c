@@ -33,7 +33,7 @@ int __z = 0;
 
 void _assert(bool a, char * msg){
     if(!a){
-        printf("%s\n", msg);
+        // printf("%s\n", msg);
         exit(1);
     }
 }
@@ -53,7 +53,7 @@ void validate_malloc_bt(void* ptr, size_t size)
     size_t bt_value = *((size_t*)bt_address);
     mem_block_t* bt_val_addr = (mem_block_t*)(bt_value & 0xfffffffffffffffe);
     if(bt_val_addr != block_addr){
-        printf("block addr: 0x016%lx, bt addr: 0x016%lx, bt val: 0x016%lx;", (size_t) block_addr, bt_address, (size_t)bt_val_addr);
+        // printf("block addr: 0x016%lx, bt addr: 0x016%lx, bt val: 0x016%lx;", (size_t) block_addr, bt_address, (size_t)bt_val_addr);
     }
     _assert(bt_val_addr == block_addr, "boundary tag addres does not match block address");
 }
@@ -75,7 +75,7 @@ void validate_calloc(void *ptr, size_t count, size_t size){
 }
  
 void *call_malloc(size_t size){
-    printf("\tcalling malloc(size = %lu)\n", size);
+    // printf("\tcalling malloc(size = %lu)\n", size);
     void *res = malloc(size);
     _assert(res != NULL, "");
     validate_malloc(res, size);
@@ -90,7 +90,7 @@ void *call_malloc(size_t size){
 }
  
 void *call_calloc(size_t count, size_t size){
-    printf("\tcalling calloc(count = %lu, size = %lu)\n", count, size);
+    // printf("\tcalling calloc(count = %lu, size = %lu)\n", count, size);
     void *res = calloc(count, size);
     validate_calloc(res, count, size);
     return res;
@@ -103,14 +103,14 @@ void validate_posix_memalign(int res, void **memptr, size_t alignment, size_t si
 }
  
 int call_posix_memalign(void **memptr, size_t alignment, size_t size){
-    printf("\tcalling posix_memalign(memptr = 0x016%lx, alignment = %lu, size = %lu)\n", (size_t)memptr, alignment, size);
+    // printf("\tcalling posix_memalign(memptr = 0x016%lx, alignment = %lu, size = %lu)\n", (size_t)memptr, alignment, size);
     int res = posix_memalign(memptr, alignment, size);
     validate_posix_memalign(res, memptr, alignment, size);
     return res;
 }
  
 void *call_realloc(void *ptr, size_t size){
-    printf("\tcalling realloc(ptr = 0x016%lx, size = %lu)\n", (size_t)ptr, size);
+    // printf("\tcalling realloc(ptr = 0x016%lx, size = %lu)\n", (size_t)ptr, size);
     void * res = realloc(ptr, size);
     if(res != NULL){
         validate_malloc(res, size);
@@ -119,7 +119,7 @@ void *call_realloc(void *ptr, size_t size){
 }
  
 void call_free(void *ptr){
-    printf("\tcalling free(ptr = 0x016%lx)\n", (size_t)ptr);
+    // printf("\tcalling free(ptr = 0x016%lx)\n", (size_t)ptr);
     _assert(ptr != NULL, "trying to free(NULL)");
     free(ptr);
 }
@@ -271,30 +271,46 @@ void free_rest(){
     }
 }
 
+///////////////////
 
+#define PBSTR "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
+#define PBWIDTH 60
 
+void printProgress (double percentage)
+{
+    int val = (int) (percentage * 100);
+    int lpad = (int) (percentage * PBWIDTH);
+    int rpad = PBWIDTH - lpad;
+    printf ("\r%3d%% [%.*s%*s]", val, lpad, PBSTR, rpad, "");
+    fflush (stdout);
+}
 
+////////////////////////
 
 void test(){
  
     init();
     while(sum_allocated_ever < _100GB){
-        printf("------------------------------ TEST BEGIN ------------------------------\n");
+        // printf("------------------------------ TEST BEGIN ------------------------------\n");
         double a = sum_allocated_ever * 1.0;
         double total = _100GB * 1.0;
-        printf("#%d, percentage of tests: %f\n", __z, a / total);
+        // printf("#%d, percentage of tests: %f\n", __z, a / total);
+        printProgress(a / total);
         allocate_something();
         #ifdef MY_MALLOC
         // foo_mdump();
         check_integrity();
         #endif
         __z++;  // for gdb conditional breakpoint / watchpoint
-        printf("------------------------------ END OF TEST ------------------------------\n");
+        // printf("------------------------------ END OF TEST ------------------------------\n");
     }
  
     free_rest();  
- 
- 
+    
+    #define GREEN   "\033[32m"
+    #define RESET   "\033[0m"
+
+    printf(GREEN "\n\nAll %d tests sucessfully passed!\n" RESET, __z);
 }
  
 int main(){

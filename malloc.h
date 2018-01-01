@@ -12,13 +12,12 @@
 #include <string.h>
 #include <stdint.h>
 
-#include <stdio.h>              // only for foo_mdump()
+#include <stdio.h>
 #include "queue.h"
 
 #define ARCH_BIT sizeof(size_t)
 
 void check_integrity();
-
 
 void *foo_malloc(size_t size);
 void *foo_calloc(size_t count, size_t size);
