@@ -34,14 +34,6 @@ int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** n
 int shrink_block(mem_block_t* block, size_t shrink_bytes);
 int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointer, size_t new_size, void* aligned_data);
 
-
-
-
-void check_integrity();
-
-
-
-
 static void* _posix_memalign(size_t alignment, size_t size);
 static void *_foo_realloc(void *aligned_data, size_t size);
 

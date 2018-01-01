@@ -75,9 +75,7 @@ static void test_posix_memalign_x_y(size_t alignment, size_t data, int rtn, long
 {
     void* _ptr;
     int _rtn = foo_posix_memalign(&_ptr, alignment, data);
-    // printf("%d\n",_rtn);
     mu_check(rtn == _rtn);
-    // printf("0x%016lx\n",(size_t)_ptr);
     if(ptr != -1){
         mu_check(_ptr == (void*)ptr);
     }
