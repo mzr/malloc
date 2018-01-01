@@ -37,66 +37,66 @@ int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointe
 static void* _posix_memalign(size_t alignment, size_t size);
 static void *_foo_realloc(void *aligned_data, size_t size);
 
-/*
- * Finds free block of size at least data_size.
- * When there is no block available, returns NULL
- */
-mem_block_t* find_free_block(size_t size)
+void *foo_malloc(size_t size)
 {
-    assert(size >= MIN_BLOCK_SIZE );
-    assert(size % 8 == 0);
-    mem_block_t* iter_block;
-    mem_chunk_t* iter_chunk;
-
-    LIST_FOREACH(iter_chunk, &chunk_list, ma_node){
-        LIST_FOREACH(iter_block, &iter_chunk->ma_freeblks, mb_node){
-            if(iter_block->mb_size >= size){
-                return iter_block;
-            }
-            assert(iter_block->mb_size >= MIN_BLOCK_SIZE);
-        }
-    }
-
-    return NULL;
+    void* tmp;
+    int rtn = foo_posix_memalign(&tmp, sizeof(void*), size);
+    return (rtn == 0 ? tmp : NULL);
 }
 
-/*
- * Allocates new chunk which has a single free 
- * block of size at least min_block_data_bytes.
- * Returns NULL on fail (mmap error, propably no memory)
- */
-mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
+void* foo_realloc(void* ptr, size_t size)
 {
-    size_t needed_bytes = sizeof(mem_chunk_t) + min_block_data_bytes + 4 * sizeof(void*);
-    size_t page_bytes_needed = _pages_needed(needed_bytes, PAGESIZE) * PAGESIZE;
-    mem_chunk_t* new_chunk;
-    mem_block_t* middle_block;
-    mem_block_t* right_boundary_block;
+    if(size == 0){
+        foo_free(ptr);
+        return NULL;
+    }
 
-    new_chunk = (mem_chunk_t*) mmap(NULL, page_bytes_needed, 
-        PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-        
-    if(new_chunk == MAP_FAILED)
+    if(ptr == NULL)
+        return foo_malloc(size);
+
+    return _foo_realloc(ptr, size);
+}
+
+void *foo_calloc(size_t count, size_t size)
+{
+    if(count == 0 || size == 0)
         return NULL;
 
-    // init chunk metadata
-    new_chunk->size = page_bytes_needed - sizeof(mem_chunk_t);
-    LIST_INSERT_HEAD(&chunk_list, new_chunk, ma_node);
+    size_t demanded_bytes = count * size;
+    void* ptr; 
+    int rtn = foo_posix_memalign(&ptr, sizeof(void*), demanded_bytes);
+
+    if(rtn == EINVAL || rtn == ENOMEM || ptr == NULL)
+        return NULL;
     
-    // Init left boundary block of size 0. It is always allocated.
-    set_block_size_and_bt(&new_chunk->ma_first, 0);
+    memset(ptr, 0, demanded_bytes);
 
-    // Init middle free block.
-    middle_block = (mem_block_t*)((size_t)(new_chunk->ma_first.mb_data)  + BT_SIZE);
-    set_block_size_and_bt(middle_block, page_bytes_needed - sizeof(mem_chunk_t) - 3 * sizeof(void*));
-    LIST_INSERT_HEAD(&new_chunk->ma_freeblks, middle_block, mb_node);
-    assert(middle_block->mb_size >= MIN_BLOCK_SIZE && middle_block->mb_size % 8 == 0);
+    return ptr;
+}
 
-    // Init right boundary block of size 0. It is always allocated.
-    right_boundary_block = (mem_block_t*)((size_t)get_back_boundary_tag_address(middle_block) + BT_SIZE);
-    set_block_size_and_bt(right_boundary_block, 0);
+int foo_posix_memalign(void **memptr, size_t alignment, size_t data_bytes)
+{
+    void* aligned_memory = NULL;
 
-    return new_chunk;
+    if(alignment % sizeof(void *) != 0
+        || !is_power_of_two(alignment / sizeof(void *))
+        || alignment == 0)
+        return EINVAL;
+    
+    // Disallow blocks of 0 size.
+    if(data_bytes <= 0){
+       *memptr = NULL;
+        return 0;
+    }
+    
+    aligned_memory = _posix_memalign(alignment, data_bytes);
+
+    if(aligned_memory == NULL)
+        return ENOMEM;
+
+    *memptr = aligned_memory;
+
+    return 0;    
 }
 
 static void* _foo_realloc(void* aligned_data, size_t size)
@@ -134,71 +134,59 @@ static void* _foo_realloc(void* aligned_data, size_t size)
     return NULL; // dumy pointer. CHANGE IT!
 }
 
-void* foo_realloc(void* ptr, size_t size)
+static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
 {
-    if(size == 0){
-        foo_free(ptr);
-        return NULL;
-    }
+    mem_block_t* found_block = NULL;
+    mem_chunk_t* new_chunk = NULL;
+    mem_block_t* right_side_split_block = NULL;
+    void* aligned_memory = NULL;
+    size_t user_align_bytes;
+    size_t total_bytes;
+    size_t eight_bytes_data;
 
-    if(ptr == NULL)
-        return foo_malloc(size);
+    /* Overhead needed for user alignment. mb_data is aligned due to default struct alignment */
+    user_align_bytes = alignment <= MB_DATA_ALIGNMENT ? 0 : alignment - MB_DATA_ALIGNMENT;
+    total_bytes = demanded_bytes + user_align_bytes;
+    /* round to align boundary tag, which at nearest, aligned to sizeof(void*) 
+     * address, after aligned data */
+    eight_bytes_data = _round_up_to_multiply_of(total_bytes, sizeof(void*));
 
-    return _foo_realloc(ptr, size);
-}
+    // UGLY TEMPORARY SOLUTION
+    eight_bytes_data = eight_bytes_data < 2*sizeof(void*) ? 2*sizeof(void*) : eight_bytes_data;        
 
-void *foo_malloc(size_t size)
-{
-    void* tmp;
-    int rtn = foo_posix_memalign(&tmp, sizeof(void*), size);
-    return (rtn == 0 ? tmp : NULL);
-}
-
-void *foo_calloc(size_t count, size_t size)
-{
-    if(count == 0 || size == 0)
-        return NULL;
-
-    size_t demanded_bytes = count * size;
-    void* ptr; 
-    int rtn = foo_posix_memalign(&ptr, sizeof(void*), demanded_bytes);
-
-    if(rtn == EINVAL || rtn == ENOMEM || ptr == NULL)
-        return NULL;
+    found_block = find_free_block(eight_bytes_data);
     
-    memset(ptr, 0, demanded_bytes);
+        
+    /* Need to allocate new chunk */
+    if(found_block == NULL){
+        new_chunk = get_new_chunk(eight_bytes_data);
+        /* No memory available */
+        if(new_chunk == NULL)
+            return NULL;
 
-    return ptr;
-}
-
-void foo_mdump()
-{
-    int chunk_nr = 0;
-    int block_nr = 0;
-    mem_chunk_t* chunk;
-    mem_block_t* block;
-    size_t bt_points_to; 
-    printf("DYNAMICALLY ALLOCATED MEMORY DUMP (ONLY FREE BLOCKS):\n");
-    LIST_FOREACH(chunk, &chunk_list, ma_node){
-        printf("%d\t0x%016lx\t0x%016lx\t%d\n", 
-            chunk_nr++, 
-            (size_t) chunk, 
-            (size_t) &chunk->ma_first, 
-            chunk->size);
-        LIST_FOREACH(block, &chunk->ma_freeblks, mb_node){
-            bt_points_to = (size_t)get_back_boundary_tag_of_block(block);
-            printf("\t%d\t0x%016lx\t0x%016lx\t%d\t0x%016lx\t0x%016lx\n", 
-                block_nr++, 
-                (size_t) block, 
-                (size_t) block->mb_data, 
-                block->mb_size, 
-                (size_t)get_back_boundary_tag_address(block),
-                bt_points_to);
-            assert(block->mb_size > 0);
-            assert((size_t)block == bt_points_to);
-        }
-        block_nr = 0;
+        // we dont want first block cos it is a boundary block of size 0        
+        found_block = (mem_block_t*)((size_t)new_chunk->ma_first.mb_data + BT_SIZE);
     }
+    // need to set aligned_memory
+    if(alignment <= MB_DATA_ALIGNMENT)
+        aligned_memory = (void*)&found_block->mb_data;
+    else
+        aligned_memory = (void**)(((size_t)(&found_block->mb_data) + user_align_bytes) & ~(alignment - 1));
+    assert(found_block->mb_size > 0);
+    found_block->mb_size = -found_block->mb_size;
+    set_boundary_tag_of_block(found_block);
+
+    // now block is read but not splitted
+    // split when needed
+    split_block_to_size(found_block, eight_bytes_data, &right_side_split_block);
+
+    // delete allocated block from list
+    LIST_REMOVE(found_block, mb_node);
+
+    // clear bytes between mb_data and aligned_memory
+    bzero(found_block->mb_data, (size_t)aligned_memory - (size_t)(found_block->mb_data));
+
+    return aligned_memory;
 }
 
 void foo_free(void *ptr)
@@ -295,84 +283,96 @@ void foo_free(void *ptr)
 
 }
 
-int foo_posix_memalign(void **memptr, size_t alignment, size_t data_bytes)
+void foo_mdump()
 {
-    void* aligned_memory = NULL;
-
-    if(alignment % sizeof(void *) != 0
-        || !is_power_of_two(alignment / sizeof(void *))
-        || alignment == 0)
-        return EINVAL;
-    
-    // Disallow blocks of 0 size.
-    if(data_bytes <= 0){
-       *memptr = NULL;
-        return 0;
+    int chunk_nr = 0;
+    int block_nr = 0;
+    mem_chunk_t* chunk;
+    mem_block_t* block;
+    size_t bt_points_to; 
+    printf("DYNAMICALLY ALLOCATED MEMORY DUMP (ONLY FREE BLOCKS):\n");
+    LIST_FOREACH(chunk, &chunk_list, ma_node){
+        printf("%d\t0x%016lx\t0x%016lx\t%d\n", 
+            chunk_nr++, 
+            (size_t) chunk, 
+            (size_t) &chunk->ma_first, 
+            chunk->size);
+        LIST_FOREACH(block, &chunk->ma_freeblks, mb_node){
+            bt_points_to = (size_t)get_back_boundary_tag_of_block(block);
+            printf("\t%d\t0x%016lx\t0x%016lx\t%d\t0x%016lx\t0x%016lx\n", 
+                block_nr++, 
+                (size_t) block, 
+                (size_t) block->mb_data, 
+                block->mb_size, 
+                (size_t)get_back_boundary_tag_address(block),
+                bt_points_to);
+            assert(block->mb_size > 0);
+            assert((size_t)block == bt_points_to);
+        }
+        block_nr = 0;
     }
-    
-    aligned_memory = _posix_memalign(alignment, data_bytes);
-
-    if(aligned_memory == NULL)
-        return ENOMEM;
-
-    *memptr = aligned_memory;
-
-    return 0;    
 }
 
-static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
+/*
+ * Finds free block of size at least data_size.
+ * When there is no block available, returns NULL
+ */
+mem_block_t* find_free_block(size_t size)
 {
-    mem_block_t* found_block = NULL;
-    mem_chunk_t* new_chunk = NULL;
-    mem_block_t* right_side_split_block = NULL;
-    void* aligned_memory = NULL;
-    size_t user_align_bytes;
-    size_t total_bytes;
-    size_t eight_bytes_data;
+    assert(size >= MIN_BLOCK_SIZE );
+    assert(size % 8 == 0);
+    mem_block_t* iter_block;
+    mem_chunk_t* iter_chunk;
 
-    /* Overhead needed for user alignment. mb_data is aligned due to default struct alignment */
-    user_align_bytes = alignment <= MB_DATA_ALIGNMENT ? 0 : alignment - MB_DATA_ALIGNMENT;
-    total_bytes = demanded_bytes + user_align_bytes;
-    /* round to align boundary tag, which at nearest, aligned to sizeof(void*) 
-     * address, after aligned data */
-    eight_bytes_data = _round_up_to_multiply_of(total_bytes, sizeof(void*));
-
-    // UGLY TEMPORARY SOLUTION
-    eight_bytes_data = eight_bytes_data < 2*sizeof(void*) ? 2*sizeof(void*) : eight_bytes_data;        
-
-    found_block = find_free_block(eight_bytes_data);
-    
-        
-    /* Need to allocate new chunk */
-    if(found_block == NULL){
-        new_chunk = get_new_chunk(eight_bytes_data);
-        /* No memory available */
-        if(new_chunk == NULL)
-            return NULL;
-
-        // we dont want first block cos it is a boundary block of size 0        
-        found_block = (mem_block_t*)((size_t)new_chunk->ma_first.mb_data + BT_SIZE);
+    LIST_FOREACH(iter_chunk, &chunk_list, ma_node){
+        LIST_FOREACH(iter_block, &iter_chunk->ma_freeblks, mb_node){
+            if(iter_block->mb_size >= size){
+                return iter_block;
+            }
+            assert(iter_block->mb_size >= MIN_BLOCK_SIZE);
+        }
     }
-    // need to set aligned_memory
-    if(alignment <= MB_DATA_ALIGNMENT)
-        aligned_memory = (void*)&found_block->mb_data;
-    else
-        aligned_memory = (void**)(((size_t)(&found_block->mb_data) + user_align_bytes) & ~(alignment - 1));
-    assert(found_block->mb_size > 0);
-    found_block->mb_size = -found_block->mb_size;
-    set_boundary_tag_of_block(found_block);
 
-    // now block is read but not splitted
-    // split when needed
-    split_block_to_size(found_block, eight_bytes_data, &right_side_split_block);
+    return NULL;
+}
 
-    // delete allocated block from list
-    LIST_REMOVE(found_block, mb_node);
+/*
+ * Allocates new chunk which has a single free 
+ * block of size at least min_block_data_bytes.
+ * Returns NULL on fail (mmap error, propably no memory)
+ */
+mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
+{
+    size_t needed_bytes = sizeof(mem_chunk_t) + min_block_data_bytes + 4 * sizeof(void*);
+    size_t page_bytes_needed = _pages_needed(needed_bytes, PAGESIZE) * PAGESIZE;
+    mem_chunk_t* new_chunk;
+    mem_block_t* middle_block;
+    mem_block_t* right_boundary_block;
 
-    // clear bytes between mb_data and aligned_memory
-    bzero(found_block->mb_data, (size_t)aligned_memory - (size_t)(found_block->mb_data));
+    new_chunk = (mem_chunk_t*) mmap(NULL, page_bytes_needed, 
+        PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        
+    if(new_chunk == MAP_FAILED)
+        return NULL;
 
-    return aligned_memory;
+    // init chunk metadata
+    new_chunk->size = page_bytes_needed - sizeof(mem_chunk_t);
+    LIST_INSERT_HEAD(&chunk_list, new_chunk, ma_node);
+    
+    // Init left boundary block of size 0. It is always allocated.
+    set_block_size_and_bt(&new_chunk->ma_first, 0);
+
+    // Init middle free block.
+    middle_block = (mem_block_t*)((size_t)(new_chunk->ma_first.mb_data)  + BT_SIZE);
+    set_block_size_and_bt(middle_block, page_bytes_needed - sizeof(mem_chunk_t) - 3 * sizeof(void*));
+    LIST_INSERT_HEAD(&new_chunk->ma_freeblks, middle_block, mb_node);
+    assert(middle_block->mb_size >= MIN_BLOCK_SIZE && middle_block->mb_size % 8 == 0);
+
+    // Init right boundary block of size 0. It is always allocated.
+    right_boundary_block = (mem_block_t*)((size_t)get_back_boundary_tag_address(middle_block) + BT_SIZE);
+    set_block_size_and_bt(right_boundary_block, 0);
+
+    return new_chunk;
 }
 
 /////////////////////////////////////

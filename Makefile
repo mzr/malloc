@@ -6,7 +6,7 @@ all: malloc.o test-functional test-cases test-spec
 run-all-tests: run-test-functional run-test-cases run-test-spec
 
 run-test-functional: test-functional
-	./tests/functional-test
+	./tests/functional-test # $(SEED)
 
 run-test-cases: test-cases
 	./tests/test-cases
