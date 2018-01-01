@@ -46,8 +46,8 @@ void check_integrity();
  */
 static mem_block_t* find_free_block(size_t size)
 {
-    assert(size % 8 == 0);
     assert(size > 0);
+    assert(size % 8 == 0);
     mem_block_t* iter_block;
     mem_chunk_t* iter_chunk;
 
@@ -74,6 +74,7 @@ static mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
     size_t pages_needed = _pages_needed(needed_bytes, PAGESIZE);
     size_t page_bytes_needed = pages_needed * PAGESIZE;
     mem_chunk_t* new_chunk;
+    mem_block_t* middle_block;
 
     new_chunk = (mem_chunk_t*) mmap(NULL, page_bytes_needed, 
         PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -81,24 +82,23 @@ static mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
     if(new_chunk == MAP_FAILED)
         return NULL;
 
-    // init chunk
+    // init chunk metadata
     new_chunk->size = page_bytes_needed - sizeof(mem_chunk_t);
     LIST_INSERT_HEAD(&chunk_list, new_chunk, ma_node);
     
-    // init first boundary block of 0 size. it is always allocated
+    // Init left boundary block of size 0. It is always allocated.
     new_chunk->ma_first.mb_size = 0;
-
     set_boundary_tag_of_block(&new_chunk->ma_first);
 
-    // init middle free block
-    mem_block_t* middle_block = NULL;
+    // Init middle free block.
     middle_block = (mem_block_t*)((size_t)(new_chunk->ma_first.mb_data)  + BT_SIZE);
     middle_block->mb_size = page_bytes_needed - sizeof(mem_chunk_t) - 3 * sizeof(void*);
     assert(middle_block->mb_size > 0 && middle_block->mb_size % 8 == 0);
     set_boundary_tag_of_block(middle_block);
     LIST_INSERT_HEAD(&new_chunk->ma_freeblks, middle_block, mb_node);
 
-    mem_block_t* right_boundary_block = (mem_block_t*)((size_t)(middle_block->mb_data) + (size_t)middle_block->mb_size + BT_SIZE);
+    // Init right boundary block of size 0. It is always allocated.
+    mem_block_t* right_boundary_block = (mem_block_t*)((size_t)get_back_boundary_tag_address(middle_block) + BT_SIZE);
     right_boundary_block->mb_size = 0;
     set_boundary_tag_of_block(right_boundary_block);
 

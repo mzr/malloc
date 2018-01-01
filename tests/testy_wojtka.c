@@ -315,7 +315,7 @@ void test(){
  
 int main(){
 
-    srand(92);
+    srand(93);
  
     test();
 }
