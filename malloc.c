@@ -10,7 +10,7 @@
 #define ECANTEXPAND 3
 
 #define is_power_of_two(x)     ((((x) - 1) & (x)) == 0)
-#define ABS(value)  ( ((value) >= 0) ? (value) : (-(value)) )
+#define ABS(value)  ((size_t)( ((value) >= 0) ? (value) : (-(value)) ))
 #define _round_up_to_multiply_of(x,r) ((x) + ((r) - ((x) % (r))))
 #define _pages_needed(x,r) (((x) / (r)) + (((x) % (r)) ? 1 : 0))
 
@@ -326,10 +326,10 @@ mem_block_t* find_free_block(size_t size)
 
     LIST_FOREACH(iter_chunk, &chunk_list, ma_node){
         LIST_FOREACH(iter_block, &iter_chunk->ma_freeblks, mb_node){
-            if(iter_block->mb_size >= size){
+            if((size_t)iter_block->mb_size >= size){
                 return iter_block;
             }
-            assert(iter_block->mb_size >= MIN_BLOCK_SIZE);
+            assert(iter_block->mb_size >= (int32_t)MIN_BLOCK_SIZE);
         }
     }
 
@@ -366,7 +366,7 @@ mem_chunk_t* get_new_chunk(size_t min_block_data_bytes)
     middle_block = (mem_block_t*)((size_t)(new_chunk->ma_first.mb_data)  + BT_SIZE);
     set_block_size_and_bt(middle_block, page_bytes_needed - sizeof(mem_chunk_t) - 3 * sizeof(void*));
     LIST_INSERT_HEAD(&new_chunk->ma_freeblks, middle_block, mb_node);
-    assert(middle_block->mb_size >= MIN_BLOCK_SIZE && middle_block->mb_size % 8 == 0);
+    assert(middle_block->mb_size >= (int32_t)MIN_BLOCK_SIZE && middle_block->mb_size % 8 == 0);
 
     // Init right boundary block of size 0. It is always allocated.
     right_boundary_block = (mem_block_t*)((size_t)get_back_boundary_tag_address(middle_block) + BT_SIZE);
@@ -386,7 +386,7 @@ int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** n
     if(ABS(block->mb_size) == desired_size)
         return 0;
 
-    size_t available_space_for_new_block_with_its_header = ABS(block->mb_size) - ABS(desired_size) - BT_SIZE;
+    size_t available_space_for_new_block_with_its_header = ABS(block->mb_size) - desired_size - BT_SIZE;
     
     // <= OR <. blocks of 0 size? NOPE
     // < doesnt generate blocks of 0 size. because the new block
@@ -401,7 +401,7 @@ int split_block_to_size(mem_block_t* block, size_t desired_size, mem_block_t** n
     *new_block = (mem_block_t*)((size_t)block->mb_data + desired_size + BT_SIZE);
 
     // update block
-    block->mb_size = -ABS(desired_size);
+    block->mb_size = -desired_size;
     set_boundary_tag_of_block(block);
 
     // set new blocks data
@@ -446,7 +446,7 @@ mem_block_t* get_block_address_from_aligned_data_pointer(void* aligned_data)
 
 mem_block_t** get_back_boundary_tag_address(mem_block_t* block)
 {
-    return (mem_block_t**)((size_t)block->mb_data + (size_t)ABS(block->mb_size));
+    return (mem_block_t**)((size_t)block->mb_data + ABS(block->mb_size));
 }
 
 void set_boundary_tag_of_block(mem_block_t* block)

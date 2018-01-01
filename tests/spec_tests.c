@@ -65,7 +65,7 @@ MU_TEST_SUITE(posix_memalign_alloc_wrong_alignment_and_data_0) {
     MU_RUN_TEST(posix_memalign_10_5_returns_EINVAL);
 }
 
-int main(int argc, char *argv[]) {
+int main() {
 	MU_RUN_SUITE(posix_memalign_alloc_wrong_alignment_and_data_0);
 	MU_REPORT();
     #define GREEN   "\033[32m"

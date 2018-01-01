@@ -11,7 +11,6 @@ extern mem_block_t* get_right_block_addr(mem_block_t* block);
 
 void walk_the_chunk(mem_chunk_t* chunk)
 {
-    size_t is_allocated;
     mem_block_t* iter = &chunk->ma_first;
     int block_number = 0;
 
@@ -22,7 +21,7 @@ void walk_the_chunk(mem_chunk_t* chunk)
     iter = get_right_block_addr(iter);
     block_number++;
     do{
-        assert(ABS(iter->mb_size) >= MIN_BLOCK_SIZE);
+        assert(ABS(iter->mb_size) >= (int32_t)MIN_BLOCK_SIZE);
         assert(ABS(iter->mb_size) % 8 == 0);
         assert((size_t)iter == (size_t)get_back_boundary_tag_of_block(iter));
         assert((size_t)iter->mb_data + ABS(iter->mb_size) == (size_t)get_back_boundary_tag_address(iter));
@@ -39,7 +38,6 @@ void walk_the_chunk(mem_chunk_t* chunk)
 
 void check_integrity(){
     mem_chunk_t* chunk;
-    mem_block_t* block;
     int i = 0;
     LIST_FOREACH(chunk, &chunk_list, ma_node){
         walk_the_chunk(chunk);

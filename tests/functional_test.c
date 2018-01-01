@@ -310,7 +310,7 @@ void test(){
 int main(int argc, char** argv){
 
     if(argc == 1){
-        srand(103);
+        srand(1337);
     } else {
         srand(atoi(argv[1]));
     }
