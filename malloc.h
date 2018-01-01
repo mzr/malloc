@@ -11,11 +11,10 @@
 #include <assert.h>
 #include <string.h>
 #include <stdint.h>
-
 #include <stdio.h>
-#include "queue.h"
 
-#define ARCH_BIT sizeof(size_t)
+#include "queue.h"
+#include "malloc_types.h"   /* struct definitions for malloc implementation */
 
 void check_integrity();
 
@@ -24,23 +23,7 @@ void *foo_calloc(size_t count, size_t size);
 void *foo_realloc(void *ptr, size_t size);
 int foo_posix_memalign(void **memptr, size_t alignment, size_t size);
 void foo_free(void *ptr);
-
 void foo_mdump();
-
-typedef struct mem_block {
-    int32_t mb_size;                    /* mb_size > 0 => free, mb_size < 0 => allocated, w/o BT */
-    union {
-        LIST_ENTRY(mem_block) mb_node;  /* node on free block list, valid if block is free */
-        uint64_t mb_data[0];            /* user data pointer, valid if block is allocated */
-    };
-} mem_block_t;                          /* mem_block_t* pointer to itself at the end of block data */
-
-typedef struct mem_chunk {
-    LIST_ENTRY(mem_chunk) ma_node;      /* node on list of all chunks */
-    LIST_HEAD(, mem_block) ma_freeblks; /* list of all free blocks in the chunk */
-    int32_t size;                       /* chunk size minus sizeof(mem_chunk_t) */
-    mem_block_t ma_first;               /* first block in the chunk */
-} mem_chunk_t;
 
 LIST_HEAD(, mem_chunk) chunk_list;      /* list of all chunks */
 
