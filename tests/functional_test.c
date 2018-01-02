@@ -169,10 +169,13 @@ void init(){
  
 void check_and_free(alloc* a){
     uint8_t data = a->seed;
+    int ugabuga = 0;
+    uint8_t arr[4] = {0xde, 0xad, 0xc0, 0xde};
     for(uint8_t * i = a->ptr; i != (uint8_t *)a->ptr + a->size; i++){
-        // _assert(*i == data, "data stored in memory was changed");
-        // data ++;
+        _assert(*i == arr[ugabuga % 4], "data stored in memory was changed");
+        ugabuga++;
     }
+    
  
     call_free(a->ptr);
     a->ptr = NULL;
@@ -183,11 +186,6 @@ void fill_with_data(alloc* a){
     uint8_t data = a->seed;
     int ugabuga = 0;
     uint8_t* i;
-    // for(i = a->ptr; i != (uint8_t *)a->ptr + a->size; i++){
-    //     *i = data;
-    //     data ++;
-    //     ugabuga++;
-    // }
     uint8_t arr[4] = {0xde, 0xad, 0xc0, 0xde};
     for(i = a->ptr; i != (uint8_t*)a->ptr + a->size; i++){
         *i = arr[ugabuga % 4];

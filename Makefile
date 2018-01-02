@@ -1,7 +1,9 @@
 CC = gcc
 CFLAGS = -std=gnu11 -Wall -Wextra -O3
 
-all: malloc.o test-functional test-cases test-spec
+all: malloc.so test-functional test-cases test-spec
+
+malloc: malloc.so # dont do default stuff
 
 run-all-tests: run-test-functional run-test-cases run-test-spec
 
@@ -27,7 +29,10 @@ integrity-check.o: malloc_integrity_check.c  malloc_integrity_check.h
 	$(CC) $(CFLAGS) -c malloc_integrity_check.c -o integrity-check.o
 
 malloc.o: malloc.c malloc.h
-	$(CC) $(CFLAGS) -c malloc.c -o malloc.o 
+	$(CC) $(CFLAGS) -c -fPIC malloc.c -o malloc.o 
+
+malloc.so: malloc.o
+	$(CC) $(CFLAGS) -pthread -shared -fPIC malloc.o -o malloc.so 
 
 clean:
 	rm -f *.o *~ *.so ./tests/test-spec ./tests/functional-test ./tests/test-cases

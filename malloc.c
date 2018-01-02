@@ -14,6 +14,8 @@
 #define _round_up_to_multiply_of(x,r) ((x) + ((r) - ((x) % (r))))
 #define _pages_needed(x,r) (((x) / (r)) + (((x) % (r)) ? 1 : 0))
 
+pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;
+
 mem_block_t* find_free_block(size_t size);
 mem_chunk_t* get_new_chunk(size_t size);
 
@@ -39,63 +41,85 @@ static void *_foo_realloc(void *aligned_data, size_t size);
 
 void *foo_malloc(size_t size)
 {
+    pthread_mutex_lock(&global_lock);
     void* tmp;
     int rtn = foo_posix_memalign(&tmp, sizeof(void*), size);
+
+    pthread_mutex_unlock(&global_lock);
     return (rtn == 0 ? tmp : NULL);
 }
 
 void* foo_realloc(void* ptr, size_t size)
 {
+    pthread_mutex_lock(&global_lock);
     if(size == 0){
         foo_free(ptr);
+        pthread_mutex_unlock(&global_lock);
         return NULL;
     }
 
-    if(ptr == NULL)
+    if(ptr == NULL){
+        pthread_mutex_unlock(&global_lock);
         return foo_malloc(size);
+    }
 
+    pthread_mutex_unlock(&global_lock);
     return _foo_realloc(ptr, size);
 }
 
 void *foo_calloc(size_t count, size_t size)
 {
-    if(count == 0 || size == 0)
+    pthread_mutex_lock(&global_lock);
+
+    if(count == 0 || size == 0){
+        pthread_mutex_unlock(&global_lock);
         return NULL;
+    }
 
     size_t demanded_bytes = count * size;
     void* ptr; 
     int rtn = foo_posix_memalign(&ptr, sizeof(void*), demanded_bytes);
 
-    if(rtn == EINVAL || rtn == ENOMEM || ptr == NULL)
+    if(rtn == EINVAL || rtn == ENOMEM || ptr == NULL){
+        pthread_mutex_unlock(&global_lock);
         return NULL;
+    }
     
     memset(ptr, 0, demanded_bytes);
 
+    pthread_mutex_unlock(&global_lock);
     return ptr;
 }
 
 int foo_posix_memalign(void **memptr, size_t alignment, size_t data_bytes)
 {
+    pthread_mutex_lock(&global_lock);
     void* aligned_memory = NULL;
 
     if(alignment % sizeof(void *) != 0
         || !is_power_of_two(alignment / sizeof(void *))
-        || alignment == 0)
+        || alignment == 0){
+        pthread_mutex_unlock(&global_lock);
         return EINVAL;
+    }
     
     // Disallow blocks of 0 size.
     if(data_bytes <= 0){
        *memptr = NULL;
         return 0;
+        pthread_mutex_unlock(&global_lock);
     }
     
     aligned_memory = _posix_memalign(alignment, data_bytes);
 
-    if(aligned_memory == NULL)
+    if(aligned_memory == NULL){
+        pthread_mutex_unlock(&global_lock);
         return ENOMEM;
+    }
 
     *memptr = aligned_memory;
 
+    pthread_mutex_unlock(&global_lock);
     return 0;    
 }
 
@@ -191,12 +215,17 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
 
 void foo_free(void *ptr)
 {
-    if(ptr == NULL)
+    pthread_mutex_lock(&global_lock);
+    if(ptr == NULL){
+        pthread_mutex_unlock(&global_lock);
         return;
+    }
     
     // wrong pointer
-    if((size_t)ptr % sizeof(void*) != 0)
+    if((size_t)ptr % sizeof(void*) != 0){
+        pthread_mutex_unlock(&global_lock);
         return;
+    }
 
     mem_block_t* block = get_block_address_from_aligned_data_pointer(ptr);
     mem_block_t* left_block = get_left_block_addr(block);
@@ -243,6 +272,8 @@ void foo_free(void *ptr)
         mem_chunk_t* chunk = (mem_chunk_t*)((size_t)left_block - 4 * sizeof(void*));
         LIST_REMOVE(chunk, ma_node);
         munmap(chunk, chunk->size + sizeof(mem_chunk_t));
+
+        pthread_mutex_unlock(&global_lock);
         return;
     }
 
@@ -279,12 +310,13 @@ void foo_free(void *ptr)
         } 
     }
 
+    pthread_mutex_unlock(&global_lock);
     return;    
-
 }
 
 void foo_mdump()
 {
+    pthread_mutex_lock(&global_lock);
     int chunk_nr = 0;
     int block_nr = 0;
     mem_chunk_t* chunk;
@@ -311,6 +343,7 @@ void foo_mdump()
         }
         block_nr = 0;
     }
+    pthread_mutex_unlock(&global_lock);
 }
 
 /*
@@ -487,9 +520,9 @@ int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointe
         if(right_block->mb_size - (int32_t)expand_bytes >= (int32_t)sizeof(mem_block_t)){
             mem_block_t* new_right_block = (mem_block_t*)((size_t)right_block + expand_bytes);
 
+            // overlapping replace may occur when |expand_bytes| == 8 
             mem_block_t temp_block;
             memcpy(&temp_block, right_block, sizeof(mem_block_t));
-            
             LIST_REPLACE(&temp_block, new_right_block, mb_node);
 
             new_right_block->mb_size = right_block->mb_size - expand_bytes; 
@@ -557,9 +590,9 @@ int shrink_block(mem_block_t* block, size_t shrink_bytes)
         new_right_block->mb_size = right_block->mb_size + shrink_bytes;
         set_boundary_tag_of_block(new_right_block);
 
+        // overlapping replace may occur when |shrink_bytes| == 8
         mem_block_t temp_block;
         memcpy(&temp_block, right_block, sizeof(mem_block_t));
-
         LIST_REPLACE(&temp_block, new_right_block, mb_node);
 
         goto expanded_right_block_exit;

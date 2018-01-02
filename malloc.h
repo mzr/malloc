@@ -17,6 +17,15 @@
 #include "malloc_types.h"   /* struct definitions for malloc implementation */
 #include "malloc_integrity_check.h" /* walk_the_chunk() and integrity_check() */
 
+#define SHADOWING_MALLOC 
+
+#ifdef SHADOWING_MALLOC
+#define foo_malloc malloc
+#define foo_calloc calloc
+#define foo_posix_memalign posix_memalign
+#define foo_free free
+#endif
+
 void *foo_malloc(size_t size);
 void *foo_calloc(size_t count, size_t size);
 void *foo_realloc(void *ptr, size_t size);

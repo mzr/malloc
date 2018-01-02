@@ -295,15 +295,6 @@ struct {								\
 	QUEUEDEBUG_LIST_POSTREMOVE((elm), field)			\
 } while (/*CONSTCOND*/0)
 
-#define LIST_REPLACE_LEFT_TO_RIGHT_COPYING(elm, elm2, field) do {\
-	(elm2)->field.le_prev = (elm)->field.le_prev;			\
-	*(elm2)->field.le_prev = (elm2);				\
-	if (((elm2)->field.le_next = (elm)->field.le_next) != NULL)	\
-		(elm2)->field.le_next->field.le_prev =			\
-		    &(elm2)->field.le_next;				\
-	QUEUEDEBUG_LIST_POSTREMOVE((elm), field)			\
-} while(0)
-
 /*
  * Simple queue definitions.
  */
