@@ -575,7 +575,7 @@ int shrink_block(mem_block_t* block, size_t shrink_bytes)
 
     mem_block_t* right_block;
 
-    // avoid too much shrinking
+    // avoid too much shrinking bellow 16 bytes
     if(ABS(block->mb_size) - shrink_bytes < MIN_BLOCK_SIZE)
         shrink_bytes -= MIN_BLOCK_SIZE - (ABS(block->mb_size) - shrink_bytes);
 
