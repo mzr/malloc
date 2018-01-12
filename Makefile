@@ -1,38 +1,38 @@
 CC = gcc
 CFLAGS = -std=gnu11 -Wall -Wextra -O3
 
-all: malloc.so test-functional test-cases test-spec
+all: malloc.so test-functional test-spec
 
-malloc: malloc.so # dont do default stuff
+malloc: malloc.so 
 
-run-all-tests: run-test-functional run-test-cases run-test-spec
+run-all-tests: run-test-functional run-test-spec
 
 run-test-functional: test-functional
 	./tests/functional-test $(SEED) # might want to pass seed to randomize tests
-
-run-test-cases: test-cases
-	./tests/test-cases
 
 run-test-spec: test-spec
 	./tests/test-spec
 
 test-spec: tests/spec_tests.c malloc.o malloc.h
-	$(CC) $(CFLAGS) tests/spec_tests.c malloc.o -o ./tests/test-spec
+	$(CC) -std=gnu11 -g tests/spec_tests.c malloc.o -o ./tests/test-spec
 
-test-cases: tests/test_cases.c malloc.o malloc.h
-	$(CC) $(CFLAGS) tests/test_cases.c malloc.o -o ./tests/test-cases
-
-test-functional: tests/functional_test.c malloc.o integrity-check.o malloc.h
-	$(CC) -std=gnu11 tests/functional_test.c malloc.o integrity-check.o -o ./tests/functional-test
+test-functional: tests/functional_tests.c malloc.o integrity-check.o malloc.h
+	$(CC) -std=gnu11 -g tests/functional_tests.c malloc.o integrity-check.o -o ./tests/functional-test
 
 integrity-check.o: malloc_integrity_check.c  malloc_integrity_check.h
-	$(CC) $(CFLAGS) -c malloc_integrity_check.c -o integrity-check.o
+	$(CC) -std=gnu11 -g -c malloc_integrity_check.c -o integrity-check.o
 
 malloc.o: malloc.c malloc.h
 	$(CC) $(CFLAGS) -c -fPIC malloc.c -o malloc.o 
 
 malloc.so: malloc.o
-	$(CC) $(CFLAGS) -pthread -shared -fPIC malloc.o -o malloc.so 
+	$(CC) $(CFLAGS) -shared malloc.o -o malloc.so -pthread 
+
+sha-verify:
+	$(CC) ./tests/sha_verify.c -o ./tests/sha-verify -lssl -lcrypto
+
+run-sha-verify:
+	./tests/sha-verify
 
 clean:
-	rm -f *.o *~ *.so ./tests/test-spec ./tests/functional-test ./tests/test-cases
+	rm -f *.o *~ *.so ./tests/test-spec ./tests/functional-test ./tests/sha-verify
