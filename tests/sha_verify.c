@@ -31,7 +31,7 @@
 #define OVERALL_MAX_ALLOC_BYTES (4 * _1GB)
 #define AVG_ALLOC _1GB
 #define MIN_SINGLE_ALLOC 1
-#define MAX_SINGLE_ALLOC 250000
+#define MAX_SINGLE_ALLOC 300000
 #define MAX_ALLOCS 40000
 
 #define _assert(b,msg) (assert((b) && (msg)))

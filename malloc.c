@@ -41,65 +41,50 @@ static void *_foo_realloc(void *aligned_data, size_t size);
 
 void *foo_malloc(size_t size)
 {
-    pthread_mutex_lock(&global_lock);
     void* tmp;
     int rtn = foo_posix_memalign(&tmp, sizeof(void*), size);
 
-    pthread_mutex_unlock(&global_lock);
     return (rtn == 0 ? tmp : NULL);
 }
 
 void* foo_realloc(void* ptr, size_t size)
 {
-    pthread_mutex_lock(&global_lock);
     if(size == 0){
         foo_free(ptr);
-        pthread_mutex_unlock(&global_lock);
         return NULL;
     }
 
     if(ptr == NULL){
-        pthread_mutex_unlock(&global_lock);
         return foo_malloc(size);
     }
 
-    pthread_mutex_unlock(&global_lock);
     return _foo_realloc(ptr, size);
 }
 
 void *foo_calloc(size_t count, size_t size)
 {
-    pthread_mutex_lock(&global_lock);
-
-    if(count == 0 || size == 0){
-        pthread_mutex_unlock(&global_lock);
+    if(count == 0 || size == 0)
         return NULL;
-    }
 
     size_t demanded_bytes = count * size;
     void* ptr; 
     int rtn = foo_posix_memalign(&ptr, sizeof(void*), demanded_bytes);
 
-    if(rtn == EINVAL || rtn == ENOMEM || ptr == NULL){
-        pthread_mutex_unlock(&global_lock);
+    if(rtn == EINVAL || rtn == ENOMEM || ptr == NULL)
         return NULL;
-    }
     
     memset(ptr, 0, demanded_bytes);
 
-    pthread_mutex_unlock(&global_lock);
     return ptr;
 }
 
 int foo_posix_memalign(void **memptr, size_t alignment, size_t data_bytes)
 {
-    pthread_mutex_lock(&global_lock);
     void* aligned_memory = NULL;
 
     if(alignment % sizeof(void *) != 0
         || !is_power_of_two(alignment / sizeof(void *))
         || alignment == 0){
-        pthread_mutex_unlock(&global_lock);
         return EINVAL;
     }
     
@@ -107,24 +92,22 @@ int foo_posix_memalign(void **memptr, size_t alignment, size_t data_bytes)
     if(data_bytes <= 0){
        *memptr = NULL;
         return 0;
-        pthread_mutex_unlock(&global_lock);
     }
     
     aligned_memory = _posix_memalign(alignment, data_bytes);
 
     if(aligned_memory == NULL){
-        pthread_mutex_unlock(&global_lock);
         return ENOMEM;
     }
 
     *memptr = aligned_memory;
 
-    pthread_mutex_unlock(&global_lock);
     return 0;    
 }
 
 static void* _foo_realloc(void* aligned_data, size_t size)
 {
+    pthread_mutex_lock(&global_lock);
     mem_block_t* block = get_block_address_from_aligned_data_pointer(aligned_data);
 
     // we have to assume that user uses everything from aligned_data to BT.
@@ -133,13 +116,16 @@ static void* _foo_realloc(void* aligned_data, size_t size)
     size_t block_new_size = _round_up_to_multiply_of((size_t)aligned_data - (size_t)block->mb_data + size, sizeof(void*));
     assert(block_new_size != 0);
 
-    if(block_new_size == ABS(block->mb_size))
+    if(block_new_size == ABS(block->mb_size)){
+        pthread_mutex_unlock(&global_lock);
         return aligned_data;
+    }
 
     // shrinking block
     if(block_new_size < ABS(block->mb_size)){
         // cant shrink it bellow MIN_BLOCK_SIZE
         shrink_block(block, ABS(block->mb_size) - block_new_size);
+        pthread_mutex_unlock(&global_lock);
         return aligned_data;
     }
 
@@ -148,13 +134,14 @@ static void* _foo_realloc(void* aligned_data, size_t size)
         void* new_data_pointer = NULL;
         int rtn = expand_block(block, block_new_size - ABS(block->mb_size), &new_data_pointer, size, aligned_data);
         switch(rtn){
-        case SHRINKED_RIGHT_BLOCK:  return aligned_data;
-        case MERGED_RIGHT_BLOCK:    return aligned_data;
-        case MOVED_DATA:            return new_data_pointer;
-        case ECANTEXPAND:           return aligned_data;    // dont modify anything on fail!!!
+        case SHRINKED_RIGHT_BLOCK:  pthread_mutex_unlock(&global_lock); return aligned_data;
+        case MERGED_RIGHT_BLOCK:    pthread_mutex_unlock(&global_lock); return aligned_data;
+        case MOVED_DATA:            pthread_mutex_unlock(&global_lock); return new_data_pointer;
+        case ECANTEXPAND:           pthread_mutex_unlock(&global_lock); return aligned_data;    // dont modify anything on fail!!!
         }
     }
 
+    pthread_mutex_unlock(&global_lock);
     return NULL; // dumy pointer. CHANGE IT!
 }
 
@@ -180,6 +167,8 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
 
     if(eight_bytes_data >= WHOLE_NEW_CHUNK_TRESHOLD) 
         goto new_chunk;
+
+    pthread_mutex_lock(&global_lock);
     found_block = find_free_block(eight_bytes_data);
     
 new_chunk:
@@ -188,8 +177,10 @@ new_chunk:
     if(found_block == NULL){
         new_chunk = get_new_chunk(eight_bytes_data);
         /* No memory available */
-        if(new_chunk == NULL)
+        if(new_chunk == NULL){
+            pthread_mutex_unlock(&global_lock);
             return NULL;
+        }
 
         // we dont want first block cos it is a boundary block of size 0        
         found_block = (mem_block_t*)((size_t)new_chunk->ma_first.mb_data + BT_SIZE);
@@ -213,23 +204,22 @@ new_chunk:
     // clear bytes between mb_data and aligned_memory
     bzero(found_block->mb_data, (size_t)aligned_memory - (size_t)(found_block->mb_data));
 
+    pthread_mutex_unlock(&global_lock);
     return aligned_memory;
 }
 
 void foo_free(void *ptr)
 {
-    pthread_mutex_lock(&global_lock);
     if(ptr == NULL){
-        pthread_mutex_unlock(&global_lock);
         return;
     }
     
     // wrong pointer
     if((size_t)ptr % sizeof(void*) != 0){
-        pthread_mutex_unlock(&global_lock);
         return;
     }
 
+    pthread_mutex_lock(&global_lock);
     mem_block_t* block = get_block_address_from_aligned_data_pointer(ptr);
     mem_block_t* left_block = get_left_block_addr(block);
     mem_block_t* right_block = get_right_block_addr(block);
@@ -319,12 +309,12 @@ void foo_free(void *ptr)
 
 void foo_mdump()
 {
-    pthread_mutex_lock(&global_lock);
     int chunk_nr = 0;
     int block_nr = 0;
     mem_chunk_t* chunk;
     mem_block_t* block;
-    size_t bt_points_to; 
+    size_t bt_points_to;
+    pthread_mutex_lock(&global_lock);
     printf("DYNAMICALLY ALLOCATED MEMORY DUMP (ONLY FREE BLOCKS):\n");
     LIST_FOREACH(chunk, &chunk_list, ma_node){
         printf("%d\t0x%016lx\t0x%016lx\t%d\n", 
