@@ -4,16 +4,19 @@
 #include <stdint.h>
 #include <openssl/sha.h>
 #include <assert.h>
+#include "../malloc.h"
 #include "../queue.h"
 
 /* Checking data and metadata integrity.
  * SHA256 for random data or 0xdeadc0de data.
  */
 
-#define DEADCODE_DATA_CHECK
+// #define DEADCODE_DATA_CHECK
 #define SHA256_DATA_CHECK
 
-// #define FOO_MALLOC
+// #define ALLOW_PRINTFS
+#define FOO_MALLOC
+
 #ifdef FOO_MALLOC
 #define malloc foo_malloc
 #define posix_memalign foo_posix_memalign
@@ -22,15 +25,14 @@
 #define realloc foo_realloc
 #endif
 
+// Tweak this test here
 #define HASH_LENGTH_BYTES 32
 #define _1GB 1073741824ll
 #define OVERALL_MAX_ALLOC_BYTES (4 * _1GB)
 #define AVG_ALLOC _1GB
 #define MIN_SINGLE_ALLOC 1
-#define MAX_SINGLE_ALLOC (_1GB / 16)
+#define MAX_SINGLE_ALLOC 250000
 #define MAX_ALLOCS 40000
-
-// #define ALLOW_PRINTFS
 
 #define _assert(b,msg) (assert((b) && (msg)))
 
@@ -45,6 +47,15 @@ typedef struct alloc {
     LIST_ENTRY(alloc) a_node;
 } alloc_t;
 
+typedef enum operation { 
+    __malloc, 
+    __posix_memalign,
+    __calloc,
+    __free,
+    __realloc 
+} operation_t;
+
+size_t operation_count[5];
 size_t now_allocated_bytes = 0;
 size_t overall_allocated_bytes = 0;
 size_t actions_taken = 0;
@@ -87,25 +98,39 @@ void printProgress (double percentage)
 
 void init_test()
 {
+    #ifdef ALLOW_PRINTFS
+    printf("initializing test\n");
+    #endif
     for(int i=0; i<MAX_ALLOCS; i++)
         LIST_INSERT_HEAD(&free_allocs, &alloc[i], a_node);
 }
 
 void fill_with_data(alloc_t* a, size_t size)
 {
+    #ifdef SHA256_DATA_CHECK
     for(int i=0; i<size; i++){
         *(uint8_t*)(a->ptr + i) = (uint8_t)rand();
     }
+    #endif
+
+    #ifdef DEADCODE_DATA_CHECK
+    int ugabuga = 0;
+    uint8_t* i;
+    uint8_t arr[4] = {0xde, 0xad, 0xc0, 0xde};
+    for(i = a->ptr; i != (uint8_t*)a->ptr + size; i++){
+        *i = arr[ugabuga % 4];
+        ugabuga++;
+    }
+    #endif
 }
 
 void call_malloc(size_t size)
 {   
     // check for free structires
     if(free_structures == 0){
-        //cant alloc
         return;
     }
-
+    operation_count[__malloc]++;
     #ifdef ALLOW_PRINTFS
     printf("calling malloc(%lu)\n", size);
     #endif
@@ -127,13 +152,14 @@ void call_posix_memalign(size_t size, size_t alignment)
     if(free_structures == 0){
         return;
     }
-
+    operation_count[__posix_memalign]++;
     #ifdef ALLOW_PRINTFS
     printf("calling posi_memalign(%lu, %lu)\n", size, alignment);
     #endif
     alloc_t* free_alloc = LIST_FIRST(&free_allocs);
     free_alloc->ptr = malloc(size);
     int result = posix_memalign(&free_alloc->ptr, alignment, size);
+    // check for alignment of a pointer
     free_alloc->size = size;
     fill_with_data(free_alloc, size);
     calc_hash(free_alloc);
@@ -157,6 +183,7 @@ void call_calloc(size_t count, size_t size)
         //cant alloc
         return;
     }
+    operation_count[__calloc]++;
     #ifdef ALLOW_PRINTFS
     printf("calling calloc(%lu, %lu)\n", count, size);
     #endif
@@ -182,10 +209,20 @@ void call_realloc_bigger()
 void verify_data(alloc_t* a)
 {
     hash_t h;
+    #ifdef SHA256_DATA_CHECK
     calculate_hash(a->ptr, a->size, h.value);
     int result = same_hashes(&a->hash, &h);
-
     _assert(result == 1, "hashes not the same");
+    #endif
+
+    #ifdef DEADCODE_DATA_CHECK
+    int ugabuga = 0;
+    uint8_t arr[4] = {0xde, 0xad, 0xc0, 0xde};
+    for(uint8_t * i = a->ptr; i != (uint8_t *)a->ptr + a->size; i++){
+        _assert(*i == arr[ugabuga % 4], "data stored in memory was changed");
+        ugabuga++;
+    }
+    #endif
 }
 
 void call_free()
@@ -193,6 +230,8 @@ void call_free()
     if(allocated_structures == 0){
         return;
     }
+    operation_count[__free]++;    
+    
     #ifdef ALLOW_PRINTFS
     printf("calling free\n");
     #endif
@@ -219,6 +258,8 @@ void call_realloc_smaller()
 {
     if(allocated_structures == 0)
         return;
+
+    operation_count[__realloc]++;
 
     #ifdef ALLOW_PRINTFS
     printf("calling free\n");
@@ -285,25 +326,35 @@ void teardown_test()
     }
 }
 
+void print_stats()
+{
+    printf("\nmalloc %lu\n", operation_count[__malloc]);
+    printf("posix_memalign %lu\n", operation_count[__posix_memalign]);
+    printf("calloc %lu\n", operation_count[__calloc]);
+    printf("free %lu\n", operation_count[__free]);
+    printf("realloc %lu\n", operation_count[__realloc]);
+}
+
 void run_test(){
     init_test();
     while(overall_allocated_bytes < OVERALL_MAX_ALLOC_BYTES && actions_taken < MAX_ALLOCS){
-        #ifdef ALLOW_PRINTFS
-        printf("------------------------------ TEST BEGIN ------------------------------\n");
-        #endif
-        printProgress((overall_allocated_bytes * 1.0) / (OVERALL_MAX_ALLOC_BYTES * 1.0));
+        // printf("------------------------------ TEST BEGIN ------------------------------\n");
+        double progress1 = (overall_allocated_bytes * 1.0) / (OVERALL_MAX_ALLOC_BYTES * 1.0);
+        double progress2 = (actions_taken * 1.0) / (MAX_ALLOCS * 1.0);
+        printProgress(progress2 > progress1 ? progress2 : progress1);
         single_action();
+        // foo_mdump();
+        check_integrity();
         __z++;  // for gdb conditional breakpoint / watchpoint
-        #ifdef ALLOW_PRINTFS
-        printf("------------------------------ END OF TEST ------------------------------\n");
-        #endif
+        // printf("------------------------------ END OF TEST ------------------------------\n");
     }
- 
     teardown_test();  
+
+    print_stats();
     
     #define GREEN   "\033[32m"
     #define RESET   "\033[0m"
-    printf(GREEN "\n\nAll %d tests sucessfully passed!\n" RESET, __z);
+    printf(GREEN "\n\nAll %d actions sucessfully passed!\n" RESET, __z);
 }
 
 int main(int argc, char** argv){

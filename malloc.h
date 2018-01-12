@@ -26,6 +26,8 @@
 #define foo_free free
 #endif
 
+#define WHOLE_NEW_CHUNK_TRESHOLD ((size_t)(4*getpagesize()))
+
 void *foo_malloc(size_t size);
 void *foo_calloc(size_t count, size_t size);
 void *foo_realloc(void *ptr, size_t size);

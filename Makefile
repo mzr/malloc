@@ -28,11 +28,12 @@ malloc.o: malloc.c malloc.h
 malloc.so: malloc.o
 	$(CC) $(CFLAGS) -shared malloc.o -o malloc.so -pthread 
 
-sha-verify:
-	$(CC) -g ./tests/sha_verify.c -o ./tests/sha-verify -lssl -lcrypto
+# requires libssl-dev
+sha-verify: malloc.o malloc.h integrity-check.o
+	-$(CC) -std=gnu11 -g tests/sha_verify.c malloc.o integrity-check.o -o ./tests/sha-verify -lssl -lcrypto
 
-run-sha-verify:
-	./tests/sha-verify
+run-sha-verify: 
+	./tests/sha-verify $(SEED) # might want to pass seed to randomize tests
 
 clean:
 	rm -f *.o *~ *.so ./tests/test-spec ./tests/functional-test ./tests/sha-verify

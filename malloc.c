@@ -178,9 +178,12 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
     // UGLY TEMPORARY SOLUTION
     eight_bytes_data = eight_bytes_data < 2*sizeof(void*) ? 2*sizeof(void*) : eight_bytes_data;        
 
+    if(eight_bytes_data >= WHOLE_NEW_CHUNK_TRESHOLD) 
+        goto new_chunk;
     found_block = find_free_block(eight_bytes_data);
     
-        
+new_chunk:
+
     /* Need to allocate new chunk */
     if(found_block == NULL){
         new_chunk = get_new_chunk(eight_bytes_data);
