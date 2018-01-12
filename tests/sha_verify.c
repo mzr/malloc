@@ -6,6 +6,22 @@
 #include <assert.h>
 #include "../queue.h"
 
+/* Checking data and metadata integrity.
+ * SHA256 for random data or 0xdeadc0de data.
+ */
+
+#define DEADCODE_DATA_CHECK
+#define SHA256_DATA_CHECK
+
+// #define FOO_MALLOC
+#ifdef FOO_MALLOC
+#define malloc foo_malloc
+#define posix_memalign foo_posix_memalign
+#define calloc foo_calloc
+#define free foo_free
+#define realloc foo_realloc
+#endif
+
 #define HASH_LENGTH_BYTES 32
 #define _1GB 1073741824ll
 #define OVERALL_MAX_ALLOC_BYTES (4 * _1GB)
@@ -163,7 +179,7 @@ void call_realloc_bigger()
 
 }
 
-void verify_hash(alloc_t* a)
+void verify_data(alloc_t* a)
 {
     hash_t h;
     calculate_hash(a->ptr, a->size, h.value);
@@ -189,7 +205,7 @@ void call_free()
             break;
     }
 
-    verify_hash(taken_block);
+    verify_data(taken_block);
     free(alloc->ptr);
 
     now_allocated_bytes -= taken_block->size;
@@ -201,7 +217,34 @@ void call_free()
 
 void call_realloc_smaller()
 {
+    if(allocated_structures == 0)
+        return;
 
+    #ifdef ALLOW_PRINTFS
+    printf("calling free\n");
+    #endif
+    size_t rand_taken_block = rand() % allocated_structures;
+
+    alloc_t* taken_block;
+    size_t i = 0;
+    LIST_FOREACH(taken_block, &allocated_allocs, a_node){
+        if(i++ == rand_taken_block)
+            break;
+    }
+
+    verify_data(taken_block);
+
+    if(taken_block->size == 1)
+        return;
+
+    size_t new_size = rand() % taken_block->size;
+    if(new_size == 0)
+        new_size = 1; 
+    
+    taken_block->size = new_size;
+    calc_hash(taken_block); // calculate hash for trimmed data
+    taken_block->ptr = realloc(taken_block->ptr, new_size);
+    verify_data(taken_block); // verify data after moved
 }
 
 void single_action()
@@ -236,8 +279,10 @@ void single_action()
 
 void teardown_test()
 {
-    for(int i=0; i<allocated_structures; i++)
+    for(int i=0; i<allocated_structures; i++){
         call_free();
+        __z++;
+    }
 }
 
 void run_test(){
