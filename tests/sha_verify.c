@@ -8,7 +8,7 @@
 
 #define HASH_LENGTH_BYTES 32
 #define _1GB 1073741824ll
-#define OVERALL_MAX_ALLOC_BYTES (10 * _1GB)
+#define OVERALL_MAX_ALLOC_BYTES (4 * _1GB)
 #define AVG_ALLOC _1GB
 #define MIN_SINGLE_ALLOC 1
 #define MAX_SINGLE_ALLOC (_1GB / 16)
@@ -84,6 +84,12 @@ void fill_with_data(alloc_t* a, size_t size)
 
 void call_malloc(size_t size)
 {   
+    // check for free structires
+    if(free_structures == 0){
+        //cant alloc
+        return;
+    }
+
     #ifdef ALLOW_PRINTFS
     printf("calling malloc(%lu)\n", size);
     #endif
@@ -102,14 +108,16 @@ void call_malloc(size_t size)
 
 void call_posix_memalign(size_t size, size_t alignment)
 {
+    if(free_structures == 0){
+        return;
+    }
+
     #ifdef ALLOW_PRINTFS
     printf("calling posi_memalign(%lu, %lu)\n", size, alignment);
     #endif
     alloc_t* free_alloc = LIST_FIRST(&free_allocs);
     free_alloc->ptr = malloc(size);
     int result = posix_memalign(&free_alloc->ptr, alignment, size);
-    // _assert(result)
-    // _assert(free_alloc->ptr != NULL, "malloc returned NULL pointer");
     free_alloc->size = size;
     fill_with_data(free_alloc, size);
     calc_hash(free_alloc);
@@ -129,6 +137,10 @@ void verify_zeroed(void* ptr, size_t size)
 
 void call_calloc(size_t count, size_t size)
 {
+    if(free_structures == 0){
+        //cant alloc
+        return;
+    }
     #ifdef ALLOW_PRINTFS
     printf("calling calloc(%lu, %lu)\n", count, size);
     #endif
@@ -162,6 +174,9 @@ void verify_hash(alloc_t* a)
 
 void call_free()
 {
+    if(allocated_structures == 0){
+        return;
+    }
     #ifdef ALLOW_PRINTFS
     printf("calling free\n");
     #endif
@@ -215,7 +230,6 @@ void single_action()
         case 1: call_realloc_smaller();
 
         }
-        // update allocated!!
     }
     actions_taken++;
 }

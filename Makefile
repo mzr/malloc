@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -std=gnu11 -Wall -Wextra -O3
 
-all: malloc.so test-functional test-spec
+all: malloc.so test-functional test-spec sha-verify
 
 malloc: malloc.so 
 
@@ -29,7 +29,7 @@ malloc.so: malloc.o
 	$(CC) $(CFLAGS) -shared malloc.o -o malloc.so -pthread 
 
 sha-verify:
-	$(CC) ./tests/sha_verify.c -o ./tests/sha-verify -lssl -lcrypto
+	$(CC) -g ./tests/sha_verify.c -o ./tests/sha-verify -lssl -lcrypto
 
 run-sha-verify:
 	./tests/sha-verify
