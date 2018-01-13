@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=gnu11 -Wall -Wextra -O3
+CFLAGS = -std=gnu11 -Wall -Wextra #-O3
 
 all: malloc.so test-functional test-spec sha-verify
 
@@ -23,7 +23,7 @@ integrity-check.o: malloc_integrity_check.c  malloc_integrity_check.h
 	$(CC) -std=gnu11 -g -c malloc_integrity_check.c -o integrity-check.o
 
 malloc.o: malloc.c malloc.h
-	$(CC) $(CFLAGS) -c -fPIC malloc.c -o malloc.o 
+	$(CC) $(CFLAGS) -g -c -fPIC malloc.c -o malloc.o 
 
 malloc.so: malloc.o
 	$(CC) $(CFLAGS) -shared malloc.o -o malloc.so -pthread 

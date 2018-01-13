@@ -11,8 +11,8 @@
  * SHA256 for random data or 0xdeadc0de data.
  */
 
-// #define DEADCODE_DATA_CHECK
-#define SHA256_DATA_CHECK
+#define DEADCODE_DATA_CHECK
+// #define SHA256_DATA_CHECK
 
 // #define ALLOW_PRINTFS
 #define FOO_MALLOC
@@ -28,10 +28,10 @@
 // Tweak this test here
 #define HASH_LENGTH_BYTES 32
 #define _1GB 1073741824ll
-#define OVERALL_MAX_ALLOC_BYTES (4 * _1GB)
+#define OVERALL_MAX_ALLOC_BYTES (1 * _1GB)
 #define AVG_ALLOC _1GB
 #define MIN_SINGLE_ALLOC 1
-#define MAX_SINGLE_ALLOC 300000
+#define MAX_SINGLE_ALLOC (1024)
 #define MAX_ALLOCS 40000
 
 #define _assert(b,msg) (assert((b) && (msg)))
@@ -341,7 +341,7 @@ void run_test(){
         // printf("------------------------------ TEST BEGIN ------------------------------\n");
         double progress1 = (overall_allocated_bytes * 1.0) / (OVERALL_MAX_ALLOC_BYTES * 1.0);
         double progress2 = (actions_taken * 1.0) / (MAX_ALLOCS * 1.0);
-        printProgress(progress2 > progress1 ? progress2 : progress1);
+        // printProgress(progress2 > progress1 ? progress2 : progress1);
         single_action();
         // foo_mdump();
         check_integrity();

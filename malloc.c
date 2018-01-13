@@ -110,9 +110,9 @@ static void* _foo_realloc(void* aligned_data, size_t size)
     pthread_mutex_lock(&global_lock);
     mem_block_t* block = get_block_address_from_aligned_data_pointer(aligned_data);
 
-    // we have to assume that user uses everything from aligned_data to BT.
-    // he may have used much less than that but we really dont know.
-    // all we know is, that user now wants to use size bytes from aligned_data.
+    // We have to assume that user uses everything from aligned_data to BT.
+    // He may have used much less than that, but we really dont know.
+    // All we know is, that user now wants to use size bytes from aligned_data.
     size_t block_new_size = _round_up_to_multiply_of((size_t)aligned_data - (size_t)block->mb_data + size, sizeof(void*));
     assert(block_new_size != 0);
 
@@ -137,12 +137,12 @@ static void* _foo_realloc(void* aligned_data, size_t size)
         case SHRINKED_RIGHT_BLOCK:  pthread_mutex_unlock(&global_lock); return aligned_data;
         case MERGED_RIGHT_BLOCK:    pthread_mutex_unlock(&global_lock); return aligned_data;
         case MOVED_DATA:            pthread_mutex_unlock(&global_lock); return new_data_pointer;
-        case ECANTEXPAND:           pthread_mutex_unlock(&global_lock); return aligned_data;    // dont modify anything on fail!!!
+        case ECANTEXPAND:           pthread_mutex_unlock(&global_lock); return aligned_data;    // dont modify anything on fail
         }
     }
 
     pthread_mutex_unlock(&global_lock);
-    return NULL; // dumy pointer. CHANGE IT!
+    return NULL;
 }
 
 static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
@@ -162,7 +162,7 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
      * address, after aligned data */
     eight_bytes_data = _round_up_to_multiply_of(total_bytes, sizeof(void*));
 
-    // UGLY TEMPORARY SOLUTION
+    // prevent allocating block with size < 16 bytes
     eight_bytes_data = eight_bytes_data < 2*sizeof(void*) ? 2*sizeof(void*) : eight_bytes_data;        
 
     if(eight_bytes_data >= WHOLE_NEW_CHUNK_TRESHOLD) 
@@ -194,7 +194,7 @@ new_chunk:
     found_block->mb_size = -found_block->mb_size;
     set_boundary_tag_of_block(found_block);
 
-    // now block is read but not splitted
+    // now block is ready but not splitted
     // split when needed
     split_block_to_size(found_block, eight_bytes_data, &right_side_split_block);
 
@@ -210,14 +210,11 @@ new_chunk:
 
 void foo_free(void *ptr)
 {
-    if(ptr == NULL){
+    if(ptr == NULL)
         return;
-    }
     
-    // wrong pointer
-    if((size_t)ptr % sizeof(void*) != 0){
+    if((size_t)ptr % sizeof(void*) != 0)
         return;
-    }
 
     pthread_mutex_lock(&global_lock);
     mem_block_t* block = get_block_address_from_aligned_data_pointer(ptr);
@@ -225,8 +222,8 @@ void foo_free(void *ptr)
     mem_block_t* right_block = get_right_block_addr(block);
 
     // free current block
-    block->mb_size = ABS(block->mb_size);
-    set_boundary_tag_of_block(block);
+    set_block_size_and_bt(block, ABS(block->mb_size));
+
 
     /* check whether right or left are 0 size. Then it means that they
      * are edge blocks in the chunk. Do not coalescence them. 
@@ -234,32 +231,26 @@ void foo_free(void *ptr)
      */
 
     /* We need to coalescence free neighbours with size > 0.
-     * When at least one is coalescenceable, we dont need to walk
+     * When at least one is 'coalescenceable', we dont need to walk
      * the list of blocks
      */
 
-    // first try to coalescence right one
-    // then try to coalescence left one
-    // depending on which were coalescenced update list
     int32_t left_block_size = left_block->mb_size;
     int32_t right_block_size = right_block->mb_size;
 
-
     if(left_block_size > 0){
-        // LEFT IS ON FREE LIST
         coalescence_blocks(left_block, block);
         block = left_block;
     }
 
-    if(right_block_size > 0){
-        // RIGHT IS ON FREE_LIST
+    if(right_block_size > 0)
         coalescence_blocks(block, right_block);
-    }
-    mem_block_t* old_right = right_block;   // ugly fix
-    // check for unmap
+
+    mem_block_t* old_right = right_block;
+
     left_block = get_left_block_addr(block);
     right_block = get_right_block_addr(block);
-    // update left and right sizes
+
     if(left_block->mb_size == 0 && right_block->mb_size == 0){
 
         mem_chunk_t* chunk = (mem_chunk_t*)((size_t)left_block - 4 * sizeof(void*));
