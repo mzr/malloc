@@ -393,7 +393,7 @@ void run_test(){
         printProgress(progress2 > progress1 ? progress2 : progress1);
         single_action();
         // foo_mdump();
-        check_integrity();
+        check_integrity();  // checks integrity of all metadata
         // printf("%d\n", __z);
         __z++;  // for gdb conditional breakpoint / watchpoint
         // printf("------------------------------ END OF TEST ------------------------------\n");

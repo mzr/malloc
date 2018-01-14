@@ -25,7 +25,7 @@ malloc.o: malloc.c malloc.h
 malloc.so: malloc.o
 	$(CC) $(CFLAGS) -shared malloc.o -o malloc.so -pthread 
 
-# requires libssl-dev
+# requires libssl-dev when using SHA256 for data verification
 sha-verify: integrity-check.o malloc.o malloc.h
 	-$(CC) -std=gnu11 -g tests/sha_verify.c -o ./tests/sha-verify -lssl -lcrypto malloc.o integrity-check.o
 
