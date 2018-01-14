@@ -10,7 +10,6 @@
 /* Checking data and metadata integrity.
  * SHA256 for random data or 0xdeadc0de data.
  */
-
 #define DEADCODE_DATA_CHECK
 // #define SHA256_DATA_CHECK
 
@@ -27,12 +26,12 @@
 
 // Tweak this test here
 #define HASH_LENGTH_BYTES 32
-#define _1GB 1073741824ll
-#define OVERALL_MAX_ALLOC_BYTES (1 * _1GB)
+#define _1GB 1073741824ull
+#define OVERALL_MAX_ALLOC_BYTES (4 * _1GB)
 #define AVG_ALLOC _1GB
 #define MIN_SINGLE_ALLOC 1
-#define MAX_SINGLE_ALLOC (1024)
-#define MAX_ALLOCS 40000
+#define MAX_SINGLE_ALLOC (100000u)
+#define MAX_ALLOCS 40000u
 
 #define _assert(b,msg) (assert((b) && (msg)))
 
@@ -65,6 +64,14 @@ alloc_t alloc[MAX_ALLOCS];
 int __z = 0;
 LIST_HEAD(, alloc) free_allocs;
 LIST_HEAD(, alloc) allocated_allocs;
+
+void dump_taken()
+{
+    alloc_t* iter;
+    LIST_FOREACH(iter, &allocated_allocs, a_node){
+        printf("0x%016lx, %lu\n", (size_t)iter->ptr, iter->size);
+    }
+}
 
 void calculate_hash(void* data, size_t size, void* hash)
 {
@@ -124,6 +131,25 @@ void fill_with_data(alloc_t* a, size_t size)
     #endif
 }
 
+void verify_data(alloc_t* a)
+{
+    #ifdef SHA256_DATA_CHECK
+    hash_t h;
+    calculate_hash(a->ptr, a->size, h.value);
+    int result = same_hashes(&a->hash, &h);
+    _assert(result == 1, "hashes not the same");
+    #endif
+
+    #ifdef DEADCODE_DATA_CHECK
+    int ugabuga = 0;
+    uint8_t arr[4] = {0xde, 0xad, 0xc0, 0xde};
+    for(uint8_t* i = a->ptr; i != (uint8_t *)a->ptr + a->size; i++){
+        _assert(*i == arr[ugabuga % 4], "data stored in memory was changed");
+        ugabuga++;
+    }
+    #endif
+}
+
 void call_malloc(size_t size)
 {   
     // check for free structires
@@ -136,6 +162,10 @@ void call_malloc(size_t size)
     #endif
     alloc_t* free_alloc = LIST_FIRST(&free_allocs);
     free_alloc->ptr = malloc(size);
+#ifdef ALLOW_PRINTFS
+    printf("malloc(%lu) = 0x016%lx\n", size, (size_t)free_alloc->ptr);
+#endif
+
     _assert(free_alloc->ptr != NULL, "malloc returned NULL pointer");
     free_alloc->size = size;
     fill_with_data(free_alloc, size);
@@ -179,20 +209,22 @@ void verify_zeroed(void* ptr, size_t size)
 
 void call_calloc(size_t count, size_t size)
 {
-    if(free_structures == 0){
-        //cant alloc
+    if(free_structures == 0)
         return;
-    }
+
     operation_count[__calloc]++;
     #ifdef ALLOW_PRINTFS
     printf("calling calloc(%lu, %lu)\n", count, size);
     #endif
     alloc_t* free_alloc = LIST_FIRST(&free_allocs);
     free_alloc->ptr = calloc(count, size);
-    _assert(free_alloc->ptr != NULL, "malloc returned NULL pointer");
-    free_alloc->size = size;
-    verify_zeroed(free_alloc->ptr, free_alloc->size);
-    fill_with_data(free_alloc, size);
+#ifdef ALLOW_PRINTFS
+printf("calloc(%lu, %lu) = 0x016%lx\n", count, size, (size_t)free_alloc->ptr);
+#endif
+    _assert(free_alloc->ptr != NULL, "calloc returned NULL pointer");
+    free_alloc->size = size*count;
+    verify_zeroed(free_alloc->ptr, size*count);
+    fill_with_data(free_alloc, size*count);
     calc_hash(free_alloc);
     LIST_REMOVE(free_alloc, a_node);
     LIST_INSERT_HEAD(&allocated_allocs, free_alloc, a_node);
@@ -203,25 +235,41 @@ void call_calloc(size_t count, size_t size)
 
 void call_realloc_bigger()
 {
+    if(allocated_structures == 0)
+        return;
 
-}
+    
 
-void verify_data(alloc_t* a)
-{
-    hash_t h;
-    #ifdef SHA256_DATA_CHECK
-    calculate_hash(a->ptr, a->size, h.value);
-    int result = same_hashes(&a->hash, &h);
-    _assert(result == 1, "hashes not the same");
+    #ifdef ALLOW_PRINTFS
+    printf("calling realloc bigger\n");
     #endif
+    size_t rand_taken_block = rand() % allocated_structures;
 
-    #ifdef DEADCODE_DATA_CHECK
-    int ugabuga = 0;
-    uint8_t arr[4] = {0xde, 0xad, 0xc0, 0xde};
-    for(uint8_t * i = a->ptr; i != (uint8_t *)a->ptr + a->size; i++){
-        _assert(*i == arr[ugabuga % 4], "data stored in memory was changed");
-        ugabuga++;
+    alloc_t* taken_block;
+    size_t i = 0;
+    LIST_FOREACH(taken_block, &allocated_allocs, a_node){
+        if(i++ == rand_taken_block)
+            break;
     }
+
+    verify_data(taken_block);
+
+    if(taken_block->size >= MAX_SINGLE_ALLOC)
+        return;
+
+    // new_size is in [taken_block->size + 1, MAX_SINGLE_ALLOC]
+    int r = rand();
+    size_t new_size = (r % ((MAX_SINGLE_ALLOC  - taken_block->size)) + taken_block->size);
+    void* tmp = realloc(taken_block->ptr, new_size);
+    taken_block->ptr = tmp;
+    operation_count[__realloc]++;
+    verify_data(taken_block);
+
+    now_allocated_bytes += (new_size - taken_block->size);
+    taken_block->size = new_size;
+    fill_with_data(taken_block, new_size);
+    #ifdef SHA256_DATA_CHECK
+    calc_hash(taken_block);
     #endif
 }
 
@@ -262,7 +310,7 @@ void call_realloc_smaller()
     operation_count[__realloc]++;
 
     #ifdef ALLOW_PRINTFS
-    printf("calling free\n");
+    printf("calling realloc smaller\n");
     #endif
     size_t rand_taken_block = rand() % allocated_structures;
 
@@ -282,10 +330,11 @@ void call_realloc_smaller()
     if(new_size == 0)
         new_size = 1; 
     
+    now_allocated_bytes -= (taken_block->size - new_size);
     taken_block->size = new_size;
     calc_hash(taken_block); // calculate hash for trimmed data
     taken_block->ptr = realloc(taken_block->ptr, new_size);
-    verify_data(taken_block); // verify data after moved
+    verify_data(taken_block);
 }
 
 void single_action()
@@ -341,10 +390,11 @@ void run_test(){
         // printf("------------------------------ TEST BEGIN ------------------------------\n");
         double progress1 = (overall_allocated_bytes * 1.0) / (OVERALL_MAX_ALLOC_BYTES * 1.0);
         double progress2 = (actions_taken * 1.0) / (MAX_ALLOCS * 1.0);
-        // printProgress(progress2 > progress1 ? progress2 : progress1);
+        printProgress(progress2 > progress1 ? progress2 : progress1);
         single_action();
         // foo_mdump();
         check_integrity();
+        // printf("%d\n", __z);
         __z++;  // for gdb conditional breakpoint / watchpoint
         // printf("------------------------------ END OF TEST ------------------------------\n");
     }
