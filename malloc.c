@@ -44,6 +44,11 @@ void *foo_malloc(size_t size)
     void* tmp;
     int rtn = foo_posix_memalign(&tmp, sizeof(void*), size);
 
+    if(rtn == ENOMEM){
+        errno = ENOMEM;
+        return NULL;
+    }
+
     return (rtn == 0 ? tmp : NULL);
 }
 
@@ -55,10 +60,21 @@ void* foo_realloc(void* ptr, size_t size)
     }
 
     if(ptr == NULL){
-        return foo_malloc(size);
+        void* rtn = foo_malloc(size);
+        if(rtn == NULL){
+            errno = ENOMEM;
+            return NULL;
+        }
+        return rtn;
     }
 
-    return _foo_realloc(ptr, size);
+    void* rtn = _foo_realloc(ptr, size);
+    if(rtn == NULL){
+        errno = ENOMEM;
+        return NULL;
+    }
+
+    return rtn;
 }
 
 void *foo_calloc(size_t count, size_t size)
@@ -70,8 +86,10 @@ void *foo_calloc(size_t count, size_t size)
     void* ptr; 
     int rtn = foo_posix_memalign(&ptr, sizeof(void*), demanded_bytes);
 
-    if(rtn == EINVAL || rtn == ENOMEM || ptr == NULL)
+    if(rtn == ENOMEM || ptr == NULL){
+        errno = ENOMEM;
         return NULL;
+    }
     
     memset(ptr, 0, demanded_bytes);
 
