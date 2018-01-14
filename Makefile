@@ -5,7 +5,7 @@ all: malloc.so test-spec sha-verify
 
 malloc: malloc.so 
 
-run-all-tests: run-test-functional run-test-spec
+run-all-tests: run-test-spec run-sha-verify
 
 run-test-spec: test-spec
 	./tests/test-spec
