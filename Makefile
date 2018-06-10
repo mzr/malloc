@@ -28,6 +28,7 @@ malloc.so: malloc.o
 # requires libssl-dev when using SHA256 for data verification
 sha-verify: integrity-check.o malloc.o malloc.h
 	-$(CC) -std=gnu11 -g tests/sha_verify.c -o ./tests/sha-verify -lssl -lcrypto malloc.o integrity-check.o
-
+	# $(CC) -std=gnu11 -g tests/sha_verify.c -o ./tests/sha-verify malloc.o integrity-check.o
+	
 clean:
 	rm -f *.o *~ *.so ./tests/test-spec ./tests/sha-verify

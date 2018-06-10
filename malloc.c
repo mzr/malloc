@@ -39,6 +39,43 @@ int expand_block(mem_block_t* block, size_t expand_bytes, void** new_data_pointe
 static void* _posix_memalign(size_t alignment, size_t size);
 static void *_foo_realloc(void *aligned_data, size_t size);
 
+void* __foo_malloc(size_t size){
+    pthread_mutex_lock(&global_lock);
+    void* ptr = foo_malloc(size);
+    pthread_mutex_unlock(&global_lock);
+    return ptr;
+}
+
+void* __foo_calloc(size_t count, size_t size){
+    pthread_mutex_lock(&global_lock);
+    void* ptr = foo_calloc(count, size);
+    pthread_mutex_unlock(&global_lock);
+    return ptr;
+}
+
+void* __foo_realloc(void* ptr, size_t size){
+    pthread_mutex_lock(&global_lock);
+    void* p = foo_realloc(ptr, size);
+    pthread_mutex_unlock(&global_lock);
+    return p;
+}
+
+void __foo_free(void* ptr){
+    pthread_mutex_lock(&global_lock);
+    foo_free(ptr);
+    pthread_mutex_unlock(&global_lock);
+}
+
+int __foo_posix_memalign(void** ptr, size_t alignment, size_t size){
+    pthread_mutex_lock(&global_lock);
+    void* p;
+    int rtn = foo_posix_memalign(&p, alignment, size);
+    pthread_mutex_unlock(&global_lock);
+    *ptr = p;
+    return rtn;
+}
+
+
 void *foo_malloc(size_t size)
 {
     void* tmp;
@@ -125,7 +162,6 @@ int foo_posix_memalign(void **memptr, size_t alignment, size_t data_bytes)
 
 static void* _foo_realloc(void* aligned_data, size_t size)
 {
-    pthread_mutex_lock(&global_lock);
     mem_block_t* block = get_block_address_from_aligned_data_pointer(aligned_data);
 
     // We have to assume that user uses everything from aligned_data to BT.
@@ -135,7 +171,6 @@ static void* _foo_realloc(void* aligned_data, size_t size)
     assert(block_new_size != 0);
 
     if(block_new_size == ABS(block->mb_size)){
-        pthread_mutex_unlock(&global_lock);
         return aligned_data;
     }
 
@@ -143,7 +178,6 @@ static void* _foo_realloc(void* aligned_data, size_t size)
     if(block_new_size < ABS(block->mb_size)){
         // cant shrink it bellow MIN_BLOCK_SIZE
         shrink_block(block, ABS(block->mb_size) - block_new_size);
-        pthread_mutex_unlock(&global_lock);
         return aligned_data;
     }
 
@@ -152,14 +186,13 @@ static void* _foo_realloc(void* aligned_data, size_t size)
         void* new_data_pointer = NULL;
         int rtn = expand_block(block, block_new_size - ABS(block->mb_size), &new_data_pointer, size, aligned_data);
         switch(rtn){
-        case SHRINKED_RIGHT_BLOCK:  pthread_mutex_unlock(&global_lock); return aligned_data;
-        case MERGED_RIGHT_BLOCK:    pthread_mutex_unlock(&global_lock); return aligned_data;
-        case MOVED_DATA:            pthread_mutex_unlock(&global_lock); return new_data_pointer;
-        case ECANTEXPAND:           pthread_mutex_unlock(&global_lock); return aligned_data;    // dont modify anything on fail
+        case SHRINKED_RIGHT_BLOCK:  return aligned_data;
+        case MERGED_RIGHT_BLOCK:    return aligned_data;
+        case MOVED_DATA:            return new_data_pointer;
+        case ECANTEXPAND:           return /* aligned_data */ NULL;    // dont modify anything on fail
         }
     }
 
-    pthread_mutex_unlock(&global_lock);
     return NULL;
 }
 
@@ -186,7 +219,6 @@ static void* _posix_memalign(size_t alignment, size_t demanded_bytes)
     if(eight_bytes_data >= WHOLE_NEW_CHUNK_TRESHOLD) 
         goto new_chunk;
 
-    pthread_mutex_lock(&global_lock);
     found_block = find_free_block(eight_bytes_data);
     
 new_chunk:
@@ -196,7 +228,6 @@ new_chunk:
         new_chunk = get_new_chunk(eight_bytes_data);
         /* No memory available */
         if(new_chunk == NULL){
-            pthread_mutex_unlock(&global_lock);
             return NULL;
         }
 
@@ -222,7 +253,6 @@ new_chunk:
     // clear bytes between mb_data and aligned_memory
     bzero(found_block->mb_data, (size_t)aligned_memory - (size_t)(found_block->mb_data));
 
-    pthread_mutex_unlock(&global_lock);
     return aligned_memory;
 }
 
@@ -234,7 +264,6 @@ void foo_free(void *ptr)
     if((size_t)ptr % sizeof(void*) != 0)
         return;
 
-    pthread_mutex_lock(&global_lock);
     mem_block_t* block = get_block_address_from_aligned_data_pointer(ptr);
     mem_block_t* left_block = get_left_block_addr(block);
     mem_block_t* right_block = get_right_block_addr(block);
@@ -275,7 +304,6 @@ void foo_free(void *ptr)
         LIST_REMOVE(chunk, ma_node);
         munmap(chunk, chunk->size + sizeof(mem_chunk_t));
 
-        pthread_mutex_unlock(&global_lock);
         return;
     }
 
@@ -312,7 +340,6 @@ void foo_free(void *ptr)
         } 
     }
 
-    pthread_mutex_unlock(&global_lock);
     return;    
 }
 

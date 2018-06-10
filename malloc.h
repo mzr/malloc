@@ -20,10 +20,11 @@
 #define SHADOWING_MALLOC 
 
 #ifdef SHADOWING_MALLOC
-#define foo_malloc malloc
-#define foo_calloc calloc
-#define foo_posix_memalign posix_memalign
-#define foo_free free
+#define __foo_malloc malloc
+#define __foo_calloc calloc
+#define __foo_posix_memalign posix_memalign
+#define __foo_free free
+#define __foo_realloc realloc
 #endif
 
 #define WHOLE_NEW_CHUNK_TRESHOLD ((size_t)(4*getpagesize()))
